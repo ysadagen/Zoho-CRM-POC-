@@ -136,6 +136,35 @@ Do not read environment variables anywhere else in the code.
 
 ---
 
+## Administration
+
+### Admin user
+
+The Phase 1 backend has **no admin-promotion endpoint** — `is_admin`
+defaults to `False` on every registration, and there is deliberately
+no API that flips it. This avoids the "first user to register becomes
+god" race condition.
+
+To grant the admin bit, run one SQL statement against `inventory_db`
+after the operator has registered their account via `/api/v1/auth/register`:
+
+```sql
+UPDATE users SET is_admin = true WHERE email = 'you@example.com';
+```
+
+From the project root, via Docker:
+
+```powershell
+docker compose exec db psql -U postgres -d inventory_db -c ^
+  "UPDATE users SET is_admin = true WHERE email = 'you@example.com';"
+```
+
+After the next login the new admin can call `GET /api/v1/users` and
+any other admin-gated endpoint. Phase 2 (RBAC) will replace this with
+a proper role model.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |

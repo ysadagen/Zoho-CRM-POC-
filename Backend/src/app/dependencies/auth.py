@@ -16,7 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.core.security import decode_token
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
@@ -50,3 +50,24 @@ async def get_current_user(
 
     structlog.contextvars.bind_contextvars(user_id=str(user.id))
     return user
+
+
+async def require_admin(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Require the caller to be an admin user.
+
+    Builds on :func:`get_current_user`, so all the standard auth
+    checks (token present, valid, user exists, active, log binding)
+    run first. Raises :class:`AuthorizationError` (HTTP 403) when the
+    authenticated user is not marked ``is_admin``.
+
+    Phase 1 has no admin-promotion endpoint — the first admin is
+    granted by a one-line SQL update (see ``Backend/README.md``).
+    """
+    if not current_user.is_admin:
+        raise AuthorizationError(
+            "Admin role required for this resource",
+            code="ADMIN_REQUIRED",
+        )
+    return current_user
