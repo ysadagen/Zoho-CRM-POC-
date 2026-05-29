@@ -1,0 +1,105 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+web_stage/
+
+# Production builds
+build/
+dist/
+out/
+
+# Frontend logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+eslintcache
+
+# Vite/Next.js/CRA specific cache
+.cache/
+.parcel-cache/
+.next/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing & Coverage
+.toml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+*.db
+*.sqlite3
+
+# Local environment files containing DB creds, JWT secrets, Zoho Client IDs & Client Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+*token*.json
+*oauth*.json
+.zoho_tokens/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Ehthumbs.db
+Desktop.ini
+
+# IDEs (VS Code, PyCharm, WebStorm)
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

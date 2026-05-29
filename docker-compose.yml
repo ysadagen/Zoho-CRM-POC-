@@ -1,0 +1,56 @@
+# ----------------------------------------------------------------------------
+# Inventory CRM POC — local infrastructure
+#
+# Shared by the Backend and Integration Layer services. Both connect to the
+# same Postgres instance but to different logical databases (inventory_db
+# and integration_db).
+#
+# Usage:
+#   docker compose up -d        # start
+#   docker compose ps           # check health
+#   docker compose logs -f db   # tail logs
+#   docker compose down         # stop, keep data
+#   docker compose down -v      # stop and WIPE all data (also re-runs init scripts)
+#
+# Connection from the host:
+#   postgresql+asyncpg://postgres:postgres@localhost:5432/inventory_db
+#   postgresql+asyncpg://postgres:postgres@localhost:5432/integration_db
+# ----------------------------------------------------------------------------
+
+services:
+  db:
+    # Custom image: postgres:16-alpine with our init scripts baked in.
+    # See ./db/Dockerfile for why we don't bind-mount the init dir.
+    build:
+      context: ./db
+    image: inventory-crm-postgres:local
+    container_name: inventory_crm_server
+    restart: unless-stopped
+
+    environment:
+      # Dev-only credentials. Do not reuse in any non-local environment.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # POSTGRES_DB is intentionally not set. The default Postgres image
+      # creates a DB named after POSTGRES_USER (i.e. `postgres`), and our
+      # baked-in init scripts in /docker-entrypoint-initdb.d/ are the single
+      # source of truth for which application databases exist.
+
+    ports:
+      # host:container — change the host side if 5432 is already in use.
+      - "5432:5432"
+
+    volumes:
+      # Persisted Postgres data. Survives `docker compose down`.
+      - inventory_crm_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d inventory_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  inventory_crm_data:
+    name: inventory_crm_data

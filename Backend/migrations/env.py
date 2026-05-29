@@ -1,0 +1,72 @@
+"""Alembic migrations environment for the Inventory Backend.
+
+Reads the database URL from the application :class:`Settings` (single
+source of truth) and uses :data:`app.models.Base.metadata` as the
+autogenerate target. Runs in async mode against the same dialect the app
+uses at runtime (``asyncpg``).
+"""
+
+from __future__ import annotations
+
+import asyncio
+from logging.config import fileConfig
+
+from alembic import context
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from app.core.config import get_settings
+from app.models import Base  # imports register every model with Base.metadata
+
+config = context.config
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Inject the live URL — alembic.ini's sqlalchemy.url is deliberately empty.
+config.set_main_option("sqlalchemy.url", get_settings().database_url)
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    """Emit SQL to stdout instead of running it against a live DB.
+
+    Useful for generating SQL scripts to hand to a DBA. Not used in the
+    normal dev workflow.
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
+    """Run migrations against the live async engine."""
+    section = config.get_section(config.config_ini_section) or {}
+    connectable = async_engine_from_config(
+        section,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    asyncio.run(run_migrations_online())
