@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
+from app.api.v1.auth import router as auth_router
+from app.api.v1.users import router as users_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging
@@ -76,6 +78,9 @@ def create_app() -> FastAPI:
         belong on separate endpoints when they are added.
         """
         return {"status": "ok"}
+
+    app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(users_router, prefix="/api/v1")
 
     logger.info("app_initialized", extra={"env": settings.app_env})
     return app

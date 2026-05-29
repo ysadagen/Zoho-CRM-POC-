@@ -11,8 +11,6 @@ they exist for their import side effect of registering with the metadata.
 """
 
 from app.core.database import Base
+from app.models.user import User
 
-# Add new model imports below this line, e.g. in Phase 3:
-#     from app.models.user import User
-
-__all__ = ["Base"]
+__all__ = ["Base", "User"]
