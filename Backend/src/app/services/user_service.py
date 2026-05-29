@@ -49,12 +49,16 @@ class UserService:
         logger.info("user_registered", extra={"user_id": str(user.id)})
         return user
 
-    async def authenticate(self, payload: UserLogin) -> Token:
+    async def authenticate(self, payload: UserLogin) -> tuple[User, Token]:
         """Verify credentials and issue a bearer token.
 
-        Returns the same :class:`AuthenticationError` (``INVALID_CREDENTIALS``)
-        for both unknown email and wrong password so the API does not
-        leak which emails are registered.
+        Returns the authenticated :class:`User` plus the issued
+        :class:`Token` so the route can compose whichever response
+        shape it needs (currently :class:`LoginResponse`).
+
+        Raises :class:`AuthenticationError` with the same
+        ``INVALID_CREDENTIALS`` code for both unknown email and wrong
+        password so the API does not leak which emails are registered.
         """
         email = payload.email.lower()
         user = await self._users.get_by_email(email)
@@ -68,6 +72,6 @@ class UserService:
                 "User account is disabled",
                 code="ACCOUNT_DISABLED",
             )
-        token, expires_in = create_access_token(user.id)
+        access_token, expires_in = create_access_token(user.id)
         logger.info("user_authenticated", extra={"user_id": str(user.id)})
-        return Token(access_token=token, expires_in=expires_in)
+        return user, Token(access_token=access_token, expires_in=expires_in)
