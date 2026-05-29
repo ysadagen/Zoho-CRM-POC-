@@ -48,8 +48,21 @@ class UserRead(BaseModel):
 
 
 class Token(BaseModel):
-    """Bearer-token response body."""
+    """Bearer-token primitive — issued by ``create_access_token``."""
 
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class LoginResponse(Token):
+    """Body of ``POST /auth/login`` — token plus the authenticated user.
+
+    Including ``user`` here is what lets the frontend skip the
+    ``/users/me`` bootstrap call: after login it already knows the
+    caller's id and can hit ``/users/{user_id}`` directly. Token shape
+    inherits from :class:`Token` so the access-token contract stays in
+    one place.
+    """
+
+    user: UserRead

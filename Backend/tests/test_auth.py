@@ -98,6 +98,12 @@ async def test_login_returns_token_for_valid_credentials(client_with_db: AsyncCl
     assert body["expires_in"] > 0
     # A real JWT is many dozens of characters; this is a cheap sanity check.
     assert len(body["access_token"]) > 20
+    # The user block lets the frontend bootstrap without a follow-up call.
+    assert body["user"]["email"] == "dave@example.com"
+    assert body["user"]["is_active"] is True
+    assert "id" in body["user"]
+    # Sensitive fields must not leak via the login response either.
+    assert "hashed_password" not in body["user"]
 
 
 async def test_login_returns_401_for_wrong_password(client_with_db: AsyncClient) -> None:
