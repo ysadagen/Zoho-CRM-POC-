@@ -11,9 +11,11 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.items import router as items_router
 from app.api.v1.users import router as users_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -52,9 +54,19 @@ def create_app() -> FastAPI:
     # Middleware is LIFO in Starlette: the LAST one added is the OUTERMOST and
     # runs first on incoming requests. RequestIDMiddleware must run before
     # AccessLogMiddleware so the request_id is bound to the structlog context
-    # by the time the access line is emitted.
+    # by the time the access line is emitted. CORS sits OUTERMOST so the
+    # preflight short-circuit happens before any of our middleware runs.
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIDMiddleware)
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["X-Request-ID"],
+        )
 
     @app.exception_handler(AppError)
     async def handle_app_exception(request: Request, exc: AppError) -> JSONResponse:
@@ -81,6 +93,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
+    app.include_router(items_router, prefix="/api/v1")
 
     logger.info("app_initialized", extra={"env": settings.app_env})
     return app

@@ -108,3 +108,31 @@ async def client_with_db(db_session: AsyncSession) -> AsyncIterator[AsyncClient]
             yield ac
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture
+async def authenticated_client(client_with_db: AsyncClient) -> AsyncClient:
+    """``client_with_db`` with a pre-registered user logged in.
+
+    Use this for tests that don't exercise the auth flow itself but
+    need a valid bearer token to call protected endpoints. Tests that
+    test registration or login specifically should keep using
+    ``client_with_db`` and drive the flow themselves.
+
+    The bearer header is set directly on the client's default headers
+    so individual calls don't have to thread it through every request.
+    """
+    email = "fixture-runner@example.com"
+    password = "fixture-passphrase"
+
+    await client_with_db.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+    )
+    login = await client_with_db.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    token = login.json()["access_token"]
+    client_with_db.headers["Authorization"] = f"Bearer {token}"
+    return client_with_db
