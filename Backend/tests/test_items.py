@@ -78,34 +78,54 @@ async def test_get_item_requires_auth_returns_401(
 # ---------------------------------------------------------------------------
 
 
-async def test_create_item_returns_201_with_item_payload(
+async def test_create_item_returns_201_with_minimal_payload(
     authenticated_client: AsyncClient,
 ) -> None:
+    """POST returns the minimal envelope — id + sku + name + created_at.
+
+    Full item details (stock figures, status, audit fields) are intentionally
+    NOT in the POST response; clients call ``GET /items/{id}`` for those.
+    See :class:`ItemCreated` schema docstring.
+    """
     response = await authenticated_client.post(ITEMS_URL, json=_raw_item_payload())
 
     assert response.status_code == 201
     body = response.json()
+    # Minimal fields present.
     assert body["sku"] == "ITM-0001"
     assert body["name"] == "Raw Plastic Pellets"
-    assert body["type"] == "RAW"
-    assert body["category"] == "Polymer"
-    assert body["unit_of_measure"] == "kg"
-    assert body["is_active"] is True
-    # Computed field surfaces in the response.
-    assert body["status"] == "IN_STOCK"
     assert "id" in body
     assert "created_at" in body
+    # Verbose / derived / audit fields are deliberately NOT in this response.
+    assert "type" not in body
+    assert "category" not in body
+    assert "stock_quantity" not in body
+    assert "unit_price" not in body
+    assert "is_active" not in body
+    assert "status" not in body
+    assert "created_by_user_id" not in body
+    assert "updated_by_user_id" not in body
+    # Sensitive fields obviously not present.
+    assert "hashed_password" not in body
+    assert "password" not in body
 
 
-async def test_create_item_includes_audit_fields(
+async def test_created_item_audit_fields_visible_via_get(
     authenticated_client: AsyncClient,
 ) -> None:
-    """Every created row records who created and last updated it."""
-    response = await authenticated_client.post(ITEMS_URL, json=_raw_item_payload())
+    """Audit fields are persisted on create and visible via GET (not POST).
 
-    assert response.status_code == 201
-    body = response.json()
-    # Both fields populated, both are UUIDs (parsing as UUID raises if not).
+    POST returns the minimal envelope; GET returns the full ItemRead
+    including ``created_by_user_id`` and ``updated_by_user_id``.
+    """
+    create_resp = await authenticated_client.post(ITEMS_URL, json=_raw_item_payload())
+    assert create_resp.status_code == 201
+    item_id = create_resp.json()["id"]
+
+    get_resp = await authenticated_client.get(_item_url(item_id))
+
+    assert get_resp.status_code == 200
+    body = get_resp.json()
     assert uuid.UUID(body["created_by_user_id"])
     assert uuid.UUID(body["updated_by_user_id"])
     # On creation, both audit users are the same actor.
@@ -360,7 +380,7 @@ async def test_db_rejects_negative_stock_even_when_set_directly(
     [
         ("100", "50", "IN_STOCK"),
         ("25", "50", "LOW_STOCK"),
-        ("0", "50", "OUT_OF_STOCK"),
+        ("0", "50", "NO_STOCK"),
         ("100", None, "IN_STOCK"),  # no threshold = never "low"
     ],
 )
@@ -370,12 +390,20 @@ async def test_item_status_is_computed_from_stock_and_threshold(
     threshold: str | None,
     expected_status: str,
 ) -> None:
+    """Status is computed and visible on GET (not POST).
+
+    POST returns the minimal envelope, so we create then fetch to
+    verify the derived ``status`` field.
+    """
     payload = _raw_item_payload(
         sku=f"ITM-{uuid.uuid4().hex[:8]}",
         stock_quantity=stock,
         reorder_threshold=threshold,
     )
-    response = await authenticated_client.post(ITEMS_URL, json=payload)
+    create_resp = await authenticated_client.post(ITEMS_URL, json=payload)
+    assert create_resp.status_code == 201
+    item_id = create_resp.json()["id"]
 
-    assert response.status_code == 201
-    assert response.json()["status"] == expected_status
+    get_resp = await authenticated_client.get(_item_url(item_id))
+    assert get_resp.status_code == 200
+    assert get_resp.json()["status"] == expected_status

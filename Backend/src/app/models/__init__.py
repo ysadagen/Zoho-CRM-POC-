@@ -11,7 +11,8 @@ they exist for their import side effect of registering with the metadata.
 """
 
 from app.core.database import Base
+from app.models.customer import Customer
 from app.models.item import Item
 from app.models.user import User
 
-__all__ = ["Base", "Item", "User"]
+__all__ = ["Base", "Customer", "Item", "User"]

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -43,6 +44,11 @@ class UserService:
         Raises :class:`ConflictError` (409) if a user with this email
         already exists. Email comparison is case-insensitive — the value
         is lowercased before lookup and storage.
+
+        The pre-check gives a clean error code in the common case; the
+        ``IntegrityError`` catch covers the narrow race window where
+        two concurrent registrations both pass the pre-check and the
+        unique constraint on ``users.email`` fires on the second commit.
         """
         email = payload.email.lower()
         existing = await self._users.get_by_email(email)
@@ -51,12 +57,19 @@ class UserService:
                 "A user with that email already exists",
                 code="EMAIL_ALREADY_REGISTERED",
             )
-        user = await self._users.create(
-            email=email,
-            full_name=payload.full_name,
-            hashed_password=hash_password(payload.password),
-        )
-        await self._session.commit()
+        try:
+            user = await self._users.create(
+                email=email,
+                full_name=payload.full_name,
+                hashed_password=hash_password(payload.password),
+            )
+            await self._session.commit()
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise ConflictError(
+                "A user with that email already exists",
+                code="EMAIL_ALREADY_REGISTERED",
+            ) from exc
         logger.info("user_registered", extra={"user_id": str(user.id)})
         return user
 

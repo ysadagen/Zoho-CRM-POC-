@@ -25,6 +25,7 @@ from app.models.item import ItemType
 
 __all__ = [
     "ItemCreate",
+    "ItemCreated",
     "ItemList",
     "ItemRead",
     "ItemStatus",
@@ -34,11 +35,17 @@ __all__ = [
 
 
 class ItemStatus(StrEnum):
-    """Stock-level health, derived from quantity vs threshold."""
+    """Stock-level health, derived from quantity vs threshold.
+
+    ``NO_STOCK`` is deliberately neutral (vs the more common
+    "OUT_OF_STOCK"): we don't track whether stock ever existed, so the
+    label shouldn't imply history. A brand-new item with zero stock and
+    a sold-out item with zero stock are indistinguishable to this enum.
+    """
 
     IN_STOCK = "IN_STOCK"
     LOW_STOCK = "LOW_STOCK"
-    OUT_OF_STOCK = "OUT_OF_STOCK"
+    NO_STOCK = "NO_STOCK"
 
 
 class ItemCreate(BaseModel):
@@ -108,7 +115,7 @@ class ItemRead(BaseModel):
     def status(self) -> ItemStatus:
         """Derived stock health — never stored."""
         if self.stock_quantity <= 0:
-            return ItemStatus.OUT_OF_STOCK
+            return ItemStatus.NO_STOCK
         if self.reorder_threshold is not None and self.stock_quantity < self.reorder_threshold:
             return ItemStatus.LOW_STOCK
         return ItemStatus.IN_STOCK
@@ -124,3 +131,25 @@ class ItemList(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class ItemCreated(BaseModel):
+    """Minimal envelope returned by ``POST /items``.
+
+    **Project-explicit deviation from the REST convention of returning
+    the full resource on POST.** Rationale: the create response is
+    primarily about confirming creation and enabling navigation. The
+    full record (audit fields, stock figures, derived ``status``, etc.)
+    is the consumer of ``GET /items/{id}``; including them all in the
+    create response was noise the operator pointed out as unnecessary.
+
+    Do NOT switch this back to :class:`ItemRead` without a deliberate
+    project decision — the minimal shape is intentional.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sku: str
+    name: str
+    created_at: datetime

@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.item import ItemType
 from app.models.user import User
-from app.schemas.item import ItemCreate, ItemList, ItemRead, ItemUpdate
+from app.schemas.item import ItemCreate, ItemCreated, ItemList, ItemRead, ItemUpdate
 from app.services.item_service import ItemService
 
 router = APIRouter(prefix="/items", tags=["items"])
@@ -24,7 +24,7 @@ _CurrentUser = Annotated[User, Depends(get_current_user)]
 
 @router.post(
     "",
-    response_model=ItemRead,
+    response_model=ItemCreated,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new item",
 )
@@ -32,10 +32,17 @@ async def create_item(
     payload: ItemCreate,
     session: _Session,
     current_user: _CurrentUser,
-) -> ItemRead:
-    """Create an item. Returns 409 if the SKU is already taken."""
+) -> ItemCreated:
+    """Create an item. Returns 409 if the SKU is already taken.
+
+    The response is **deliberately minimal** — only the fields a
+    client needs to confirm creation and navigate (``id``, ``sku``,
+    ``name``, ``created_at``). Use ``GET /items/{id}`` to retrieve
+    the full record including stock figures, status, and audit fields.
+    See ``ItemCreated`` docstring for the rationale.
+    """
     item = await ItemService(session).create(payload, actor_id=current_user.id)
-    return ItemRead.model_validate(item)
+    return ItemCreated.model_validate(item)
 
 
 @router.get(
