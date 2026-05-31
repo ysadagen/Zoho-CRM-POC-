@@ -14,5 +14,7 @@ from app.core.database import Base
 from app.models.customer import Customer
 from app.models.item import Item
 from app.models.user import User
+from app.models.vendor import Vendor
+from app.models.vendor_item_term import VendorItemTerm
 
-__all__ = ["Base", "Customer", "Item", "User"]
+__all__ = ["Base", "Customer", "Item", "User", "Vendor", "VendorItemTerm"]
