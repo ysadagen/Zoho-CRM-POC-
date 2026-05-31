@@ -17,12 +17,17 @@ _VALID_PASSWORD = "a-strong-passphrase"
 async def test_register_returns_201_with_user_payload(client_with_db: AsyncClient) -> None:
     response = await client_with_db.post(
         REGISTER_URL,
-        json={"email": "alice@example.com", "password": _VALID_PASSWORD},
+        json={
+            "email": "alice@example.com",
+            "full_name": "Alice Anderson",
+            "password": _VALID_PASSWORD,
+        },
     )
 
     assert response.status_code == 201
     body = response.json()
     assert body["email"] == "alice@example.com"
+    assert body["full_name"] == "Alice Anderson"
     assert body["is_active"] is True
     assert "id" in body
     assert "created_at" in body
@@ -31,8 +36,23 @@ async def test_register_returns_201_with_user_payload(client_with_db: AsyncClien
     assert "password" not in body
 
 
+async def test_register_requires_full_name_returns_422(
+    client_with_db: AsyncClient,
+) -> None:
+    """Schema rejects missing ``full_name``."""
+    response = await client_with_db.post(
+        REGISTER_URL,
+        json={"email": "noname@example.com", "password": _VALID_PASSWORD},
+    )
+    assert response.status_code == 422
+
+
 async def test_register_duplicate_email_returns_409(client_with_db: AsyncClient) -> None:
-    payload = {"email": "bob@example.com", "password": _VALID_PASSWORD}
+    payload = {
+        "email": "bob@example.com",
+        "full_name": "Bob Brown",
+        "password": _VALID_PASSWORD,
+    }
     first = await client_with_db.post(REGISTER_URL, json=payload)
     assert first.status_code == 201
 
@@ -46,7 +66,11 @@ async def test_register_short_password_returns_422(client_with_db: AsyncClient) 
     # pins the exact boundary. Bumping the policy = update this literal.
     response = await client_with_db.post(
         REGISTER_URL,
-        json={"email": "carol@example.com", "password": "short12"},
+        json={
+            "email": "carol@example.com",
+            "full_name": "Carol Carter",
+            "password": "short12",
+        },
     )
     assert response.status_code == 422
 
@@ -58,7 +82,11 @@ async def test_register_password_at_minimum_length_succeeds(
     # above to pin both sides of the boundary.
     response = await client_with_db.post(
         REGISTER_URL,
-        json={"email": "harry@example.com", "password": "abcd1234"},
+        json={
+            "email": "harry@example.com",
+            "full_name": "Harry Hill",
+            "password": "abcd1234",
+        },
     )
     assert response.status_code == 201
 
@@ -68,7 +96,11 @@ async def test_register_invalid_email_format_returns_422(
 ) -> None:
     response = await client_with_db.post(
         REGISTER_URL,
-        json={"email": "not-an-email", "password": _VALID_PASSWORD},
+        json={
+            "email": "not-an-email",
+            "full_name": "Invalid Email Format",
+            "password": _VALID_PASSWORD,
+        },
     )
     assert response.status_code == 422
 
@@ -76,21 +108,34 @@ async def test_register_invalid_email_format_returns_422(
 async def test_email_uniqueness_is_case_insensitive(client_with_db: AsyncClient) -> None:
     await client_with_db.post(
         REGISTER_URL,
-        json={"email": "Frank@example.com", "password": _VALID_PASSWORD},
+        json={
+            "email": "Frank@example.com",
+            "full_name": "Frank Forrest",
+            "password": _VALID_PASSWORD,
+        },
     )
     response = await client_with_db.post(
         REGISTER_URL,
-        json={"email": "frank@example.com", "password": _VALID_PASSWORD},
+        json={
+            "email": "frank@example.com",
+            "full_name": "Frank Forrest",
+            "password": _VALID_PASSWORD,
+        },
     )
     assert response.status_code == 409
 
 
 async def test_login_returns_token_for_valid_credentials(client_with_db: AsyncClient) -> None:
-    payload = {"email": "dave@example.com", "password": _VALID_PASSWORD}
-    register_resp = await client_with_db.post(REGISTER_URL, json=payload)
+    register_payload = {
+        "email": "dave@example.com",
+        "full_name": "Dave Daniels",
+        "password": _VALID_PASSWORD,
+    }
+    login_payload = {"email": "dave@example.com", "password": _VALID_PASSWORD}
+    register_resp = await client_with_db.post(REGISTER_URL, json=register_payload)
     assert register_resp.status_code == 201
 
-    login_resp = await client_with_db.post(LOGIN_URL, json=payload)
+    login_resp = await client_with_db.post(LOGIN_URL, json=login_payload)
 
     assert login_resp.status_code == 200
     body = login_resp.json()
@@ -109,7 +154,11 @@ async def test_login_returns_token_for_valid_credentials(client_with_db: AsyncCl
 async def test_login_returns_401_for_wrong_password(client_with_db: AsyncClient) -> None:
     await client_with_db.post(
         REGISTER_URL,
-        json={"email": "eve@example.com", "password": _VALID_PASSWORD},
+        json={
+            "email": "eve@example.com",
+            "full_name": "Eve Evans",
+            "password": _VALID_PASSWORD,
+        },
     )
 
     response = await client_with_db.post(
@@ -147,7 +196,7 @@ async def test_login_returns_401_for_inactive_user(
     email = "henry@example.com"
     await client_with_db.post(
         REGISTER_URL,
-        json={"email": email, "password": _VALID_PASSWORD},
+        json={"email": email, "full_name": "Henry Hopper", "password": _VALID_PASSWORD},
     )
 
     user = await db_session.scalar(select(User).where(User.email == email))

@@ -32,12 +32,27 @@ class User(Base):
         index=True,
         nullable=False,
     )
+    full_name: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+        server_default="",
+    )
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         server_default="true",
+    )
+    # Coarse role flag. Phase 2 may replace this with a roles table; until
+    # then ``is_admin=True`` is the only privileged-access marker, granted
+    # out-of-band via SQL (see Backend/README.md). New registrations are
+    # never admin by default.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

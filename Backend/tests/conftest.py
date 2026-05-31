@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,6 +17,7 @@ from sqlalchemy.pool import NullPool
 from app.core.config import get_settings
 from app.core.database import Base, get_db
 from app.main import app
+from app.models.user import User
 
 
 @pytest.fixture
@@ -108,3 +110,67 @@ async def client_with_db(db_session: AsyncSession) -> AsyncIterator[AsyncClient]
             yield ac
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture
+async def authenticated_client(client_with_db: AsyncClient) -> AsyncClient:
+    """``client_with_db`` with a pre-registered user logged in.
+
+    Use this for tests that don't exercise the auth flow itself but
+    need a valid bearer token to call protected endpoints. Tests that
+    test registration or login specifically should keep using
+    ``client_with_db`` and drive the flow themselves.
+
+    The bearer header is set directly on the client's default headers
+    so individual calls don't have to thread it through every request.
+    """
+    email = "fixture-runner@example.com"
+    password = "fixture-passphrase"
+
+    await client_with_db.post(
+        "/api/v1/auth/register",
+        json={"email": email, "full_name": "Fixture Runner", "password": password},
+    )
+    login = await client_with_db.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    token = login.json()["access_token"]
+    client_with_db.headers["Authorization"] = f"Bearer {token}"
+    return client_with_db
+
+
+@pytest.fixture
+async def admin_authenticated_client(
+    client_with_db: AsyncClient,
+    db_session: AsyncSession,
+) -> AsyncClient:
+    """``client_with_db`` with a pre-registered **admin** user logged in.
+
+    Phase 1 has no admin-promotion endpoint — the bootstrap is SQL,
+    not API. This fixture simulates that bootstrap by registering a
+    user, flipping ``is_admin`` directly on the ORM, then logging in.
+    The promotion happens against the same SAVEPOINT the request will
+    use, so the change is visible to the next API call and rolled
+    back at teardown.
+    """
+    email = "admin-fixture@example.com"
+    password = "admin-fixture-passphrase"
+
+    await client_with_db.post(
+        "/api/v1/auth/register",
+        json={"email": email, "full_name": "Admin Fixture", "password": password},
+    )
+
+    user = await db_session.scalar(select(User).where(User.email == email))
+    assert user is not None
+    user.is_admin = True
+    await db_session.commit()
+
+    login = await client_with_db.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    token = login.json()["access_token"]
+    client_with_db.headers["Authorization"] = f"Bearer {token}"
+    return client_with_db
