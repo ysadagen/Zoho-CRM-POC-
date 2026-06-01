@@ -17,6 +17,7 @@ from starlette.requests import Request
 from app.api.v1.auth import router as auth_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.items import router as items_router
+from app.api.v1.purchase_orders import router as purchase_orders_router
 from app.api.v1.stock_movements import router as stock_movements_router
 from app.api.v1.users import router as users_router
 from app.api.v1.vendor_terms import router as vendor_terms_router
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(vendors_router, prefix="/api/v1")
     app.include_router(vendor_terms_router, prefix="/api/v1")
     app.include_router(stock_movements_router, prefix="/api/v1")
+    app.include_router(purchase_orders_router, prefix="/api/v1")
 
     logger.info("app_initialized", extra={"env": settings.app_env})
     return app
