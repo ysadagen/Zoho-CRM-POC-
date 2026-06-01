@@ -13,6 +13,7 @@ they exist for their import side effect of registering with the metadata.
 from app.core.database import Base
 from app.models.customer import Customer
 from app.models.item import Item
+from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.stock_movement import StockMovement
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -22,6 +23,8 @@ __all__ = [
     "Base",
     "Customer",
     "Item",
+    "PurchaseOrder",
+    "PurchaseOrderItem",
     "StockMovement",
     "User",
     "Vendor",
