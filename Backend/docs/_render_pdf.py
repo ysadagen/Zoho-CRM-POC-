@@ -182,7 +182,7 @@ COVER_HTML = """
   <h1>Inventory Backend</h1>
   <div class="subtitle">Reference for Frontend &amp; Integration Teams</div>
   <div class="meta">
-    Phases 1&ndash;8 complete &middot; 36 endpoints &middot; 10 tables &middot; 199 tests
+    Phases 1&ndash;8 complete &middot; 37 endpoints &middot; 10 tables &middot; 206 tests
   </div>
 </div>
 <div style="page-break-after: always;"></div>

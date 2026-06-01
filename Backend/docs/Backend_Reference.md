@@ -66,7 +66,7 @@ predict behaviour.
 
 | Principle | What it means in this codebase |
 |---|---|
-| **Spec-driven + TDD** | Every phase is written as failing tests first, then code, then refactor under green. 199 tests pin the contract. |
+| **Spec-driven + TDD** | Every phase is written as failing tests first, then code, then refactor under green. 206 tests pin the contract. |
 | **Single source of truth** | The DB is authoritative; computed fields (e.g. an item's `status`) are never stored. Stock is mutated by exactly one function (`record_movement`). |
 | **DB-level invariants** | Critical rules (stock ≥ 0, quantity > 0, status↔date consistency) are enforced by `CHECK` constraints and `UNIQUE` indexes — not just by Pydantic. The DB is the contract; the schema is defence-in-depth. |
 | **Strict typing** | mypy strict on `src/`. Every public function fully annotated. |
@@ -610,7 +610,7 @@ Wire this to k8s `readinessProbe` so traffic routes away from a pod whose DB is 
 5. About 1 minute before `expiresAt`, show a non-blocking "Session ends soon — please save your work" banner.
 6. On any `401` (or once `Date.now() > expiresAt`) → clear the token and route to the login screen. The same code (`INVALID_CREDENTIALS`) covers both bad email and bad password on the login attempt — surface a single, deliberately vague message.
 
-**There is no `/auth/refresh`.** Re-login is the only renewal path. The 8-hour default lifetime is long enough that this is a once-per-shift event for an operator, not a UX cliff. If a future iteration needs shorter sessions (RBAC, multi-device), we'll add a real OAuth2 refresh-token flow at that time.
+**There is no `/auth/refresh`.** Re-login is the only renewal path. The default 1-hour lifetime is configurable via `ACCESS_TOKEN_EXPIRE_MINUTES` if your operating model needs longer sessions. If a future iteration needs RBAC or multi-device sessions, we'll add a real OAuth2 refresh-token flow at that time — not a half-version before then.
 
 ### 10.2 Listing screens
 
@@ -750,7 +750,7 @@ Backend/
 │   ├── services/              # business logic
 │   └── main.py                # app factory + router wiring
 ├── migrations/                # Alembic, runs on test gate + dev deploy
-├── tests/                     # 199 tests across 11 files
+├── tests/                     # 206 tests across 12 files
 ├── docs/                      # this reference + Postman collection
 └── README.md, CLAUDE.md       # operator + contributor entrypoints
 ```
