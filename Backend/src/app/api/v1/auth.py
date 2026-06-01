@@ -13,6 +13,8 @@ from app.services.user_service import UserService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+_Session = Annotated[AsyncSession, Depends(get_db)]
+
 
 @router.post(
     "/register",
@@ -22,7 +24,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 )
 async def register(
     payload: UserCreate,
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: _Session,
 ) -> UserRead:
     """Create a new user. Returns 409 if the email is already registered."""
     user = await UserService(session).register(payload)
@@ -36,7 +38,7 @@ async def register(
 )
 async def login(
     payload: UserLogin,
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: _Session,
 ) -> LoginResponse:
     """Authenticate and return a bearer JWT plus the user profile.
 
@@ -47,7 +49,9 @@ async def login(
     The ``user`` field lets the frontend skip a follow-up profile
     lookup — without it the client would need to call
     ``GET /users/{user_id}`` immediately after login just to learn
-    its own id.
+    its own id. ``expires_in`` (seconds) is included so the client
+    can show "session expires in N minutes" and prompt re-login
+    before a 401 surprises an in-flight submit.
     """
     user, token = await UserService(session).authenticate(payload)
     return LoginResponse(**token.model_dump(), user=UserRead.model_validate(user))

@@ -67,3 +67,17 @@ class AuthorizationError(AppError):
 
     status_code = 403
     code = "AUTHORIZATION_ERROR"
+
+
+class ServiceUnavailableError(AppError):
+    """A downstream dependency we need is unreachable (HTTP 503).
+
+    Raised by the readiness probe when the database fails a quick
+    health query. Distinct from 500 ``INTERNAL_ERROR`` because it
+    signals "retry later, the *thing* is fine but a dep is down" —
+    important for orchestrators (k8s readiness probe routes traffic
+    away on 503; on 500 the pod stays in rotation).
+    """
+
+    status_code = 503
+    code = "SERVICE_UNAVAILABLE"
