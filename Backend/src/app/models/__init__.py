@@ -14,6 +14,7 @@ from app.core.database import Base
 from app.models.customer import Customer
 from app.models.item import Item
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
+from app.models.sales_order import SalesOrder, SalesOrderItem
 from app.models.stock_movement import StockMovement
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -25,6 +26,8 @@ __all__ = [
     "Item",
     "PurchaseOrder",
     "PurchaseOrderItem",
+    "SalesOrder",
+    "SalesOrderItem",
     "StockMovement",
     "User",
     "Vendor",
