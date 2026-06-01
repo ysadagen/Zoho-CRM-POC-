@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "8b1c5a90-2b9a-4f4f-9b30-1ea4d3a6f0b1",
     "name": "Inventory Backend",
-    "description": "All 36 endpoints exposed by the Inventory Backend (Phases 1-8).\n\nQuick start:\n1. Run the Auth > Register call once.\n2. Run Auth > Login - the test script stores the token in {{access_token}} so every other request inherits the Bearer header.\n3. From there, exercise any folder. Variables like {{item_id}}, {{vendor_id}} etc. are populated by their corresponding Create requests via the test scripts.\n\nThe collection-level Authorization is set to Bearer Token {{access_token}}; individual endpoints override this only when they must be unauthenticated (Auth/* and /health).",
+    "description": "All 37 endpoints exposed by the Inventory Backend (Phases 1-8).\n\nQuick start:\n1. Run the Auth > Register call once.\n2. Run Auth > Login - the test script stores the token in {{access_token}} so every other request inherits the Bearer header.\n3. From there, exercise any folder. Variables like {{item_id}}, {{vendor_id}} etc. are populated by their corresponding Create requests via the test scripts.\n\nThe collection-level Authorization is set to Bearer Token {{access_token}}; individual endpoints override this only when they must be unauthenticated (Auth/* and Probes/*).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -175,7 +175,7 @@
               "host": ["{{base_url}}"],
               "path": ["{{api_prefix}}", "auth", "login"]
             },
-            "description": "Authenticate. Returns 200 with `{access_token, token_type, expires_in, user}`. The test script stashes the token in {{access_token}}.\n\n`expires_in` is the token lifetime in seconds (default 28800 = 8 hours). There is no /refresh endpoint — when this lapses, redirect to login.\n\nErrors:\n- 401 INVALID_CREDENTIALS - returned for both unknown email and wrong password (no enumeration leak)."
+            "description": "Authenticate. Returns 200 with `{access_token, token_type, expires_in, user}`. The test script stashes the token in {{access_token}}.\n\n`expires_in` is the token lifetime in seconds (default 3600 = 1 hour, configurable via ACCESS_TOKEN_EXPIRE_MINUTES). There is no /refresh endpoint — when this lapses, redirect to login.\n\nErrors:\n- 401 INVALID_CREDENTIALS - returned for both unknown email and wrong password (no enumeration leak)."
           }
         }
       ]

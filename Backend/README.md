@@ -254,7 +254,7 @@ Backend/
 │   ├── services/             # business logic
 │   └── main.py               # app factory
 ├── migrations/               # Alembic
-├── tests/                    # 199 tests across 11 files
+├── tests/                    # 206 tests across 12 files
 └── docs/                     # README, Backend_Reference.md, Postman collection
 ```
 
