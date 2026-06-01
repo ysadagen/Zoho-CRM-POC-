@@ -25,7 +25,12 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Inject the live URL — alembic.ini's sqlalchemy.url is deliberately empty.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# A caller may override via ``alembic -x url=postgresql+asyncpg://...`` (the
+# test harness does this to point at the test DB instead of the dev DB
+# without having to mutate environment variables for the whole process).
+_x_args = context.get_x_argument(as_dictionary=True)
+_db_url = _x_args.get("url") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", _db_url)
 
 target_metadata = Base.metadata
 
