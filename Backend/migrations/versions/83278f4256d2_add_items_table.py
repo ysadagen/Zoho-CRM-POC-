@@ -1,11 +1,13 @@
-"""add item audit   
-
-  fields
+"""add items table
 
 Revision ID: 83278f4256d2
 Revises: b17780ee5595
 Create Date: 2026-05-29 14:59:43.204131
 
+Creates the ``items`` table along with its audit fields (the original
+autogenerate message said "audit fields" because the table and the
+audit columns were added in one shot — but the body creates the whole
+table, so the docstring is corrected here to match reality).
 """
 
 from __future__ import annotations
