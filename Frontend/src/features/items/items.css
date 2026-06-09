@@ -1,0 +1,12 @@
+/* Items-specific layout — page-local, mirrors the dashboard.css pattern.
+   Shared, reusable styles (.stat / .stat-grid) live in globals.css. */
+
+.item-overview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 32px;
+  padding: 4px;
+}
+.item-overview .full {
+  grid-column: 1 / -1;
+}

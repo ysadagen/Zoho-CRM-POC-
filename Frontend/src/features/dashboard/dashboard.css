@@ -1,0 +1,166 @@
+/* Dashboard-specific layout — ported from the design's index.html <style>.
+   Shared, reusable styles live in globals.css; these are page-local. */
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+
+/* Stock value chart */
+.chart-wrap {
+  padding: 22px;
+}
+.chart-wrap .chart-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.chart-wrap .chart-head .big {
+  font-family: 'Croissant One', serif;
+  font-size: 30px;
+  color: var(--ink);
+  line-height: 1;
+}
+.chart-wrap .chart-head .delta {
+  color: #2f5d39;
+  font-size: 13px;
+  margin-left: 10px;
+}
+.chart-wrap .figure {
+  margin-top: 6px;
+}
+.chart-wrap svg.area-chart {
+  width: 100%;
+  height: 180px;
+  display: block;
+}
+.chart-wrap .legend {
+  display: flex;
+  gap: 18px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 8px;
+}
+.chart-wrap .legend .sw {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.chart-wrap .legend .sw-finished {
+  background: var(--accent);
+}
+.chart-wrap .legend .sw-raw {
+  background: var(--danger);
+}
+.chart-wrap .legend .updated {
+  margin-left: auto;
+}
+
+/* Quick actions */
+.qa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.qa {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+.qa:hover {
+  background: var(--bg);
+  border-color: #c6c7bb;
+}
+.qa .ic {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-tint);
+  color: var(--accent-2);
+  flex-shrink: 0;
+}
+.qa .ic svg {
+  width: 16px;
+  height: 16px;
+}
+.qa .l {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+}
+.qa .s {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+/* Recent Stock Movements — every column centred (headers + cells, numbers
+   included). Scoped to .tbl-center so the shared .tbl tables elsewhere keep
+   their left/right alignment. Specificity beats `table.tbl th` and
+   `table.tbl .right`. */
+table.tbl.tbl-center th,
+table.tbl.tbl-center td {
+  text-align: center;
+}
+
+/* Low-stock mini list */
+.mini-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.mini-row:last-child {
+  border-bottom: none;
+}
+.mini-row .l {
+  flex: 1;
+}
+.mini-row .l .t {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.mini-row .l .m {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.mini-row .stk {
+  text-align: right;
+}
+.mini-row .stk .v {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mini-row .stk .b {
+  width: 90px;
+  margin-top: 6px;
+}
+
+/* CRM sync card body */
+.crm-sync-body {
+  padding: 18px 22px;
+}
+.crm-health {
+  flex: 1;
+}
+.crm-badges {
+  flex-wrap: wrap;
+}

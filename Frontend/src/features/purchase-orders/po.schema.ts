@@ -1,0 +1,36 @@
+import { z } from 'zod';
+
+const DECIMAL_RE = /^\d+(\.\d+)?$/;
+
+const lineSchema = z.object({
+  item_id: z.string().min(1, 'Pick an item'),
+  quantity: z
+    .string()
+    .trim()
+    .min(1, 'Qty required')
+    .refine((v) => DECIMAL_RE.test(v) && Number(v) > 0, 'Qty must be greater than 0'),
+  // Optional — blank lets the Backend price it from the vendor's active term.
+  unit_price: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || DECIMAL_RE.test(v), 'Price must be a non-negative number'),
+});
+
+export const poCreateSchema = z.object({
+  vendor_id: z.string().min(1, 'Pick a vendor'),
+  expected_delivery_date: z.string(),
+  notes: z.string().trim().max(1000, 'Keep notes under 1000 characters'),
+  items: z.array(lineSchema).min(1, 'Add at least one line item'),
+});
+
+export type PoFormValues = z.infer<typeof poCreateSchema>;
+export type PoLineValues = z.infer<typeof lineSchema>;
+
+export const EMPTY_LINE: PoLineValues = { item_id: '', quantity: '', unit_price: '' };
+
+export const EMPTY_PO: PoFormValues = {
+  vendor_id: '',
+  expected_delivery_date: '',
+  notes: '',
+  items: [{ ...EMPTY_LINE }],
+};
