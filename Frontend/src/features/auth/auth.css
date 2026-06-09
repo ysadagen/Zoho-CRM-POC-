@@ -1,0 +1,51 @@
+/* Auth-form specifics (password toggle + form-level alert).
+   The two-pane layout lives in src/styles/login.css (.auth-*). */
+
+.pw-field {
+  position: relative;
+}
+.pw-field .input {
+  padding-right: 40px;
+}
+.pw-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.pw-toggle:hover {
+  color: var(--ink);
+}
+
+.auth-alert {
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+.auth-alert.info {
+  background: var(--info-soft);
+  color: #2a4576;
+  border: 1px solid #b3c3da;
+}
+.auth-alert.danger {
+  background: var(--danger-soft);
+  color: #7a2c1c;
+  border: 1px solid #ddb1a5;
+}
+.auth-alert .req {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.auth-alert .req .mono {
+  font-feature-settings: 'tnum';
+}
