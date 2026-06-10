@@ -9,13 +9,6 @@ import { AppRouter } from './router';
 
 /**
  * Composition root: provider tree + router.
- *
- * - ErrorBoundary is outermost so a render crash anywhere shows a recoverable
- *   fallback instead of a blank screen.
- * - React Query owns server state (read queries retry twice; mutations never
- *   retry — see `CLAUDE.md §6`).
- * - AuthProvider owns the session; ToastProvider owns transient notifications
- *   (and the §5.6 Request-ID surface).
  */
 const queryClient = new QueryClient({
   defaultOptions: {
