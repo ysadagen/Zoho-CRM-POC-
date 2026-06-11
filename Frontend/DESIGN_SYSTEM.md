@@ -295,6 +295,16 @@ Flex/grid/spacing utilities exist (`.flex`, `.col`, `.gap-*`, `.mt-*`,
 `.text-muted`, `.w-full`, …). Use them for one-off layout instead of inline
 styles. `.divider`, `.eyebrow`, `.sect-title`, `.label-pair` for structure.
 
+### 6.16 Dropdown menu — `.menu-anchor` / `.menu-pop`
+
+Anchored popup for a small set of actions behind one trigger. `.menu-anchor`
+(positioning context) → trigger button → `.menu-backdrop` (click-catcher) +
+`.menu-pop` (the panel; `.menu-pop-left` to left-align) of `.menu-item`
+(`.danger` variant) / `.menu-sep`. React primitive: `components/ui/Menu.tsx`
+(`<Menu>` + `<MenuItem>` / `<MenuLinkItem>`) — closes on outside click, ESC, and
+item activation; `aria-haspopup="menu"` + `role="menu"`/`menuitem`. Used by the
+dashboard **New Order** split (Sales / Purchase) and the topbar account menu.
+
 ---
 
 ## 7. Iconography

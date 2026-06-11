@@ -4,12 +4,12 @@ import { routes } from '@/app/routes';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { formatQuantity } from '@/lib/format';
+import { formatCurrency, formatQuantity } from '@/lib/format';
 import type { Item } from '@/types/api.types';
 
 import { ItemStatusBadge, ItemTypeBadge } from './ItemBadges';
 
-const COL_COUNT = 8;
+const COL_COUNT = 9;
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'];
 
 export interface ItemsTableProps {
@@ -29,6 +29,7 @@ export function ItemsTable({ items, loading, onEdit, onAddItem }: ItemsTableProp
             <th>Name</th>
             <th>Type</th>
             <th>Unit</th>
+            <th className="right">Unit price</th>
             <th className="right">Stock</th>
             <th className="right">Reorder</th>
             <th>Status</th>
@@ -72,6 +73,7 @@ export function ItemsTable({ items, loading, onEdit, onAddItem }: ItemsTableProp
                   <ItemTypeBadge type={item.type} />
                 </td>
                 <td className="muted">{item.unit_of_measure}</td>
+                <td className="right mono">{formatCurrency(item.unit_price)}</td>
                 <td className="right mono">{formatQuantity(item.stock_quantity)}</td>
                 <td className="right mono muted">
                   {item.reorder_threshold ? formatQuantity(item.reorder_threshold) : '—'}

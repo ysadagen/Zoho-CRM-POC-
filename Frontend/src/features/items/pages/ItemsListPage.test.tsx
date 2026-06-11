@@ -87,6 +87,23 @@ describe('ItemsListPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Add Item' })).toBeInTheDocument();
   });
 
+  it('opens the create drawer when deep-linked with ?new=1', async () => {
+    server.use(itemsOk());
+    renderWithProviders(<ItemsListPage />, { route: '/items?new=1' });
+
+    expect(await screen.findByRole('dialog', { name: 'Add Item' })).toBeInTheDocument();
+  });
+
+  it('shows the unit price column', async () => {
+    server.use(itemsOk());
+    renderWithProviders(<ItemsListPage />);
+    await screen.findByText('Raw Steel');
+
+    expect(screen.getByRole('columnheader', { name: 'Unit price' })).toBeInTheDocument();
+    // ₹5.00 for Raw Steel (unit_price '5').
+    expect(screen.getByText(/₹\s?5\.00/)).toBeInTheDocument();
+  });
+
   it('shows a page error with the Request ID on failure', async () => {
     server.use(
       http.get(`${BASE}/items`, () =>

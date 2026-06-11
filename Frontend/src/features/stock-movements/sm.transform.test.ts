@@ -1,8 +1,21 @@
 import { describe, it, expect } from 'vitest';
 
-import type { StockMovement } from '@/types/api.types';
+import type {
+  Customer,
+  PurchaseOrder,
+  SalesOrder,
+  StockMovement,
+  Vendor,
+} from '@/types/api.types';
 
-import { directionBadge, movementReference, reasonLabel, toAdjustmentPayload } from './sm.transform';
+import {
+  directionBadge,
+  movementParty,
+  movementReference,
+  reasonLabel,
+  toAdjustmentPayload,
+  type PartyMaps,
+} from './sm.transform';
 
 function movement(overrides: Partial<StockMovement> = {}): StockMovement {
   return {
@@ -55,6 +68,34 @@ describe('movementReference', () => {
       label: 'Recount line B',
     });
     expect(movementReference(movement({ remarks: null })).label).toBe('—');
+  });
+});
+
+describe('movementParty', () => {
+  const maps: PartyMaps = {
+    purchaseOrders: new Map([['po1', { id: 'po1', vendor_id: 'v1' } as PurchaseOrder]]),
+    salesOrders: new Map([['so1', { id: 'so1', customer_id: 'c1' } as SalesOrder]]),
+    vendors: new Map([['v1', { id: 'v1', vendor_name: 'Acme Steel Co' } as Vendor]]),
+    customers: new Map([['c1', { id: 'c1', company_name: 'Bottlers Ltd' } as Customer]]),
+  };
+
+  it('resolves a purchase movement to its vendor', () => {
+    const m = movement({ reason: 'PURCHASE', reference_type: 'PURCHASE_ORDER', reference_id: 'po1' });
+    expect(movementParty(m, maps)).toBe('Acme Steel Co');
+  });
+
+  it('resolves a sale movement to its customer', () => {
+    const m = movement({ reason: 'SALE', reference_type: 'SALES_ORDER', reference_id: 'so1' });
+    expect(movementParty(m, maps)).toBe('Bottlers Ltd');
+  });
+
+  it('returns an em dash for adjustments (no reference)', () => {
+    expect(movementParty(movement(), maps)).toBe('—');
+  });
+
+  it('returns an em dash when the reference is not yet loaded', () => {
+    const m = movement({ reason: 'PURCHASE', reference_type: 'PURCHASE_ORDER', reference_id: 'po-unknown' });
+    expect(movementParty(m, maps)).toBe('—');
   });
 });
 

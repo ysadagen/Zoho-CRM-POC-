@@ -5,8 +5,12 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Pager } from '@/components/ui/Pager';
+import { useCustomersList } from '@/features/customers/hooks/useCustomers';
 import { useItemsList } from '@/features/items/hooks/useItems';
-import type { Item } from '@/types/api.types';
+import { usePurchaseOrdersList } from '@/features/purchase-orders/hooks/usePurchaseOrders';
+import { useSalesOrdersList } from '@/features/sales-orders/hooks/useSalesOrders';
+import { useVendorsList } from '@/features/vendors/hooks/useVendors';
+import type { Customer, Item, PurchaseOrder, SalesOrder, Vendor } from '@/types/api.types';
 import type { MovementDirection, MovementReason } from '@/types/enums';
 
 import { ManualAdjustmentModal } from '../components/ManualAdjustmentModal';
@@ -17,6 +21,12 @@ import {
   type ReasonFilter,
 } from '../components/StockMovementsToolbar';
 import { useStockMovements } from '../hooks/useStockMovements';
+import { movementParty, type PartyMaps } from '../sm.transform';
+
+/** Build an id→entity map from a paginated list result. */
+function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
+  return new Map((rows ?? []).map((row) => [row.id, row]));
+}
 
 const DEFAULT_LIMIT = 25;
 
@@ -38,6 +48,24 @@ export function StockMovementsListPage(): JSX.Element {
     for (const item of itemsQuery.data?.items ?? []) map.set(item.id, item);
     return map;
   }, [itemsQuery.data]);
+
+  // Resolve each movement's reference to a customer/vendor. The ledger only
+  // carries reference_type + reference_id, so we join POs→vendors / SOs→customers
+  // client-side. Mirrors the items query (first 100 of each).
+  const poQuery = usePurchaseOrdersList({ limit: 100, offset: 0 });
+  const soQuery = useSalesOrdersList({ limit: 100, offset: 0 });
+  const vendorsQuery = useVendorsList({ limit: 100, offset: 0 });
+  const customersQuery = useCustomersList({ limit: 100, offset: 0 });
+
+  const partyMaps = useMemo<PartyMaps>(
+    () => ({
+      purchaseOrders: byId<PurchaseOrder>(poQuery.data?.items),
+      salesOrders: byId<SalesOrder>(soQuery.data?.items),
+      vendors: byId<Vendor>(vendorsQuery.data?.items),
+      customers: byId<Customer>(customersQuery.data?.items),
+    }),
+    [poQuery.data, soQuery.data, vendorsQuery.data, customersQuery.data],
+  );
 
   const query = useStockMovements({
     limit,
@@ -82,6 +110,7 @@ export function StockMovementsListPage(): JSX.Element {
             movements={query.data?.items ?? []}
             loading={query.isPending}
             itemName={(id) => itemMap.get(id)?.name ?? '—'}
+            party={(m) => movementParty(m, partyMaps)}
             onAdjust={() => setAdjustOpen(true)}
           />
           {query.data && query.data.total > 0 && (

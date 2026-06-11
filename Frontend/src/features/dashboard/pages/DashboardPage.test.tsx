@@ -40,6 +40,23 @@ describe('DashboardPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('splits New Order into sales and purchase options', async () => {
+    seedSession();
+    renderWithProviders(<DashboardPage />);
+    await screen.findByText('Total Stock Value');
+
+    await userEvent.click(screen.getByRole('button', { name: /create a new order/i }));
+
+    expect(screen.getByRole('menuitem', { name: 'New Sales Order' })).toHaveAttribute(
+      'href',
+      '/sales-orders/new',
+    );
+    expect(screen.getByRole('menuitem', { name: 'New Purchase Order' })).toHaveAttribute(
+      'href',
+      '/purchase-orders/new',
+    );
+  });
+
   it('refetches the dashboard queries when Refresh is clicked', async () => {
     seedSession();
     renderWithProviders(<DashboardPage />);

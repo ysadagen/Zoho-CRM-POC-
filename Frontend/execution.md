@@ -819,6 +819,41 @@ scope, green end-to-end, and production-grade within the documented deferrals.*
 
 ---
 
+## Feedback round 1 — UI refinements (post-Phase-11)
+
+**Goal:** five reviewer asks, all UI. Spec → tests → green, no scope creep.
+
+1. **Dashboard "New Order" split.** Extracted a reusable `components/ui/Menu.tsx`
+   (`<Menu>` + `<MenuItem>`/`<MenuLinkItem>`) from the inline topbar pattern —
+   closes on outside-click, ESC, and item activation; `role="menu"`/`menuitem`,
+   `aria-haspopup`. The dashboard `+ New Order` is now a dropdown → **New Sales
+   Order** (`/sales-orders/new`) · **New Purchase Order** (`/purchase-orders/new`).
+   Documented as DESIGN_SYSTEM §6.16; added `.menu-pop-left` modifier.
+2. **Items: unit price column.** Added a right-aligned mono `Unit price`
+   (`formatCurrency(item.unit_price)`) between Unit and Stock.
+3. **Quick Actions open the form directly.** PO/SO link to their `/new` create
+   pages; Add Item / Add Customer deep-link with `?new=1`, which the Items /
+   Customers list pages read to open the create drawer (and strip the param on
+   close).
+4. **Stock Movements: Customer / Vendor column.** New pure `movementParty()` in
+   `sm.transform.ts` joins PURCHASE→PO→vendor and SALE→SO→customer client-side
+   (page loads first 100 of each, mirroring the items query); ADJUSTMENT/unresolved
+   → em dash. New `party` prop on `StockMovementsTable`.
+5. **Back-nav from a movement's item.** The ledger's item link carries
+   `state={{ from, fromLabel }}`; `ItemDetailPage` reads it so "← Stock Movements"
+   returns to the ledger (defaults to "← Items" elsewhere). `renderWithProviders`
+   gained an optional `state` for testing this.
+
+**How to test (you):**
+```powershell
+npm run verify         # lint + build + 289 tests — all green
+npm run test:coverage  # thresholds hold (global ≥ 80%, lib ≥ 95%)
+npm run dev            # dashboard New Order menu; Items unit price; Quick
+                       # Actions open forms; ledger party column + back-nav
+```
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.

@@ -10,7 +10,7 @@ import type { StockMovement } from '@/types/api.types';
 
 import { directionBadge, movementReference, reasonLabel } from '../sm.transform';
 
-const COL_COUNT = 7;
+const COL_COUNT = 8;
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'];
 const REF_ROUTE = {
   'purchase-order': routes.purchaseOrders,
@@ -21,6 +21,8 @@ export interface StockMovementsTableProps {
   movements: StockMovement[];
   loading: boolean;
   itemName: (itemId: string) => string;
+  /** Resolves the customer/vendor behind a movement (or an em dash). */
+  party: (movement: StockMovement) => string;
   onAdjust: () => void;
 }
 
@@ -29,6 +31,7 @@ export function StockMovementsTable({
   movements,
   loading,
   itemName,
+  party,
   onAdjust,
 }: StockMovementsTableProps): JSX.Element {
   return (
@@ -40,6 +43,7 @@ export function StockMovementsTable({
             <th>Item</th>
             <th>Direction</th>
             <th>Reason</th>
+            <th>Customer / Vendor</th>
             <th className="right">Qty</th>
             <th className="right">Balance after</th>
             <th>Reference</th>
@@ -77,7 +81,11 @@ export function StockMovementsTable({
                 <tr key={m.id}>
                   <td className="mono muted">{formatDateTime(m.created_at)}</td>
                   <td>
-                    <Link className="tbl-link" to={`${routes.items}/${m.item_id}`}>
+                    <Link
+                      className="tbl-link"
+                      to={`${routes.items}/${m.item_id}`}
+                      state={{ from: routes.stockMovements, fromLabel: 'Stock Movements' }}
+                    >
                       {itemName(m.item_id)}
                     </Link>
                   </td>
@@ -89,6 +97,7 @@ export function StockMovementsTable({
                   <td>
                     <Badge variant="ink">{reasonLabel(m.reason)}</Badge>
                   </td>
+                  <td className="muted">{party(m)}</td>
                   <td className="right mono">{formatSignedQuantity(m.signed_quantity)}</td>
                   <td className="right mono">{formatQuantity(m.stock_after)}</td>
                   <td className="muted">

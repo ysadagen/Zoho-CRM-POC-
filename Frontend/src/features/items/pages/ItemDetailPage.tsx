@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 
 import { routes } from '@/app/routes';
 import { PageError } from '@/components/errors/PageError';
@@ -87,8 +87,18 @@ function DetailSkeleton(): JSX.Element {
   );
 }
 
+/** Where "← Back" returns to — set via Link state by the originating page. */
+interface BackNav {
+  from?: string;
+  fromLabel?: string;
+}
+
 export function ItemDetailPage(): JSX.Element {
   const { id = '' } = useParams();
+  const { state } = useLocation();
+  const back = (state as BackNav | null) ?? null;
+  const backTo = back?.from ?? routes.items;
+  const backLabel = back?.fromLabel ?? 'Items';
   const itemQuery = useItem(id);
   const movementsQuery = useItemMovements(id);
   const [tab, setTab] = useState<DetailTab>('overview');
@@ -117,8 +127,8 @@ export function ItemDetailPage(): JSX.Element {
         }
         actions={
           <>
-            <ButtonLink to={routes.items} variant="sec">
-              ← Items
+            <ButtonLink to={backTo} variant="sec">
+              ← {backLabel}
             </ButtonLink>
             <Button variant="pri" onClick={() => setEditOpen(true)}>
               Edit

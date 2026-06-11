@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { routes } from '@/app/routes';
 import { PageError } from '@/components/errors/PageError';
@@ -19,13 +19,23 @@ const DEFAULT_LIMIT = 25;
 
 export function CustomersListPage(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState('');
   const search = useDebounce(searchInput, 300);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  // Quick Actions deep-link here with `?new=1` to open the create drawer.
+  const [createOpen, setCreateOpen] = useState(() => searchParams.get('new') === '1');
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+
+  const closeCreate = (): void => {
+    setCreateOpen(false);
+    if (searchParams.has('new')) {
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+    }
+  };
 
   useEffect(() => {
     setOffset(0);
@@ -73,7 +83,7 @@ export function CustomersListPage(): JSX.Element {
       {createOpen && (
         <CustomerFormDrawer
           mode="create"
-          onClose={() => setCreateOpen(false)}
+          onClose={closeCreate}
           onCreated={(id) => navigate(`${routes.customers}/${id}`)}
         />
       )}

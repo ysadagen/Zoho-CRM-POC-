@@ -26,13 +26,14 @@ export function seedSession(user: User = TEST_USER): void {
 /** Render a tree inside the real provider stack at a given route. */
 export function renderWithProviders(
   ui: ReactElement,
-  { route = '/' }: { route?: string } = {},
+  { route = '/', state }: { route?: string; state?: unknown } = {},
 ): RenderResult {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const initialEntry = state === undefined ? route : { pathname: route, state };
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter
-        initialEntries={[route]}
+        initialEntries={[initialEntry]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <AuthProvider>

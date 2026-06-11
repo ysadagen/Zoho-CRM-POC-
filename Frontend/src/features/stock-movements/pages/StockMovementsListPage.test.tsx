@@ -38,6 +38,19 @@ function handlers(onUrl?: (url: URL) => void) {
     http.get(`${BASE}/items`, () =>
       HttpResponse.json({ items: [{ id: 'i1', sku: 'RAW-1', name: 'Raw Steel', unit_of_measure: 'kg' }], total: 1, limit: 100, offset: 0 }),
     ),
+    // Party resolution joins PO→vendor / SO→customer client-side.
+    http.get(`${BASE}/purchase-orders`, () =>
+      HttpResponse.json({ items: [{ id: 'po1', vendor_id: 'v1' }], total: 1, limit: 100, offset: 0 }),
+    ),
+    http.get(`${BASE}/sales-orders`, () =>
+      HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+    ),
+    http.get(`${BASE}/vendors`, () =>
+      HttpResponse.json({ items: [{ id: 'v1', vendor_name: 'Acme Steel Co' }], total: 1, limit: 100, offset: 0 }),
+    ),
+    http.get(`${BASE}/customers`, () =>
+      HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+    ),
     http.get(`${BASE}/stock-movements`, ({ request }) => {
       onUrl?.(new URL(request.url));
       return HttpResponse.json({ items: MOVEMENTS, total: 1, limit: 25, offset: 0 });
@@ -54,6 +67,14 @@ describe('StockMovementsListPage', () => {
     expect(screen.getByText('IN ↑')).toBeInTheDocument();
     const ref = screen.getByRole('link', { name: 'Purchase order' });
     expect(ref).toHaveAttribute('href', '/purchase-orders/po1');
+  });
+
+  it('resolves the customer/vendor for a movement', async () => {
+    server.use(...handlers());
+    renderWithProviders(<StockMovementsListPage />);
+
+    expect(await screen.findByText('Acme Steel Co')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Customer / Vendor' })).toBeInTheDocument();
   });
 
   it('is read-only — no edit or delete controls', async () => {

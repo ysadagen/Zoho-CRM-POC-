@@ -1128,6 +1128,7 @@ table.tbl .strong { font-weight: 600; }
   cursor: pointer;
   text-align: left;
 }
+.menu-pop-left { right: auto; left: 0; }
 .menu-item:hover { background: var(--bg-2); }
 .menu-item.danger { color: var(--danger); }
 .menu-sep { height: 1px; background: var(--line); margin: 4px 0; }

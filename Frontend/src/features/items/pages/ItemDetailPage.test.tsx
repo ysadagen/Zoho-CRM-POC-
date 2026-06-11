@@ -101,6 +101,30 @@ describe('ItemDetailPage', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Raw Steel');
   });
 
+  it('defaults the back link to the Items list', async () => {
+    server.use(...handlers());
+    seedSession();
+    renderWithProviders(<AppRouter />, { route: '/items/i1' });
+    await screen.findByRole('heading', { name: 'Raw Steel' });
+
+    expect(screen.getByRole('link', { name: '← Items' })).toHaveAttribute('href', '/items');
+  });
+
+  it('returns to the originating page when navigated with Link state', async () => {
+    server.use(...handlers());
+    seedSession();
+    renderWithProviders(<AppRouter />, {
+      route: '/items/i1',
+      state: { from: '/stock-movements', fromLabel: 'Stock Movements' },
+    });
+    await screen.findByRole('heading', { name: 'Raw Steel' });
+
+    expect(screen.getByRole('link', { name: '← Stock Movements' })).toHaveAttribute(
+      'href',
+      '/stock-movements',
+    );
+  });
+
   it('shows a page error when the item fails to load', async () => {
     server.use(
       http.get(`${BASE}/items/i1`, () =>

@@ -12,10 +12,10 @@ interface QuickAction {
 }
 
 const ACTIONS: QuickAction[] = [
-  { to: routes.items, icon: 'package', label: 'Add Item', sub: 'Raw or finished' },
-  { to: routes.purchaseOrders, icon: 'cart', label: 'New Purchase Order', sub: 'From a vendor' },
-  { to: routes.salesOrders, icon: 'bag', label: 'New Sales Order', sub: 'To a customer' },
-  { to: routes.customers, icon: 'user', label: 'Add Customer', sub: 'Auto-syncs to Zoho' },
+  { to: `${routes.items}?new=1`, icon: 'package', label: 'Add Item', sub: 'Raw or finished' },
+  { to: `${routes.purchaseOrders}/new`, icon: 'cart', label: 'New Purchase Order', sub: 'From a vendor' },
+  { to: `${routes.salesOrders}/new`, icon: 'bag', label: 'New Sales Order', sub: 'To a customer' },
+  { to: `${routes.customers}?new=1`, icon: 'user', label: 'Add Customer', sub: 'Auto-syncs to Zoho' },
 ];
 
 export function QuickActions(): JSX.Element {
