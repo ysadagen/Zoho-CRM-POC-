@@ -227,13 +227,23 @@ users ──┬─◄ items (audit FKs)
         ├─◄ vendor_item_terms
         ├─◄ stock_movements
         ├─◄ purchase_orders
-        └─◄ sales_orders
+        ├─◄ sales_orders
+        ├─◄ raw_item_details
+        ├─◄ finished_item_details
+        └─◄ batches
 
 customers ◄────── sales_orders ──┬─◄ sales_order_items ────► items
 vendors   ◄────── purchase_orders─┴─◄ purchase_order_items ──► items
 
 items ◄────── stock_movements
 items ◄────── vendor_item_terms ──────► vendors
+
+(pharma — Class-Table Inheritance + lot tracking):
+items ◄──1:1── raw_item_details        (PK = item_id; for type = RAW)
+items ◄──1:1── finished_item_details   (PK = item_id; for type = FINISHED)
+items ◄──1:N── batches ──┬─► vendors          (vendor_id, nullable)
+                         └─► purchase_orders  (received_via_po_id, nullable)
+batches ◄────── stock_movements.batch_id   (nullable; set by batch-aware flows)
 
 (soft-FK polymorphic):
 stock_movements.(reference_type, reference_id) →
@@ -246,15 +256,40 @@ stock_movements.(reference_type, reference_id) →
 | Table | Phase | Key columns |
 |---|---|---|
 | `users` | 2 | `id`, `email` (unique), `password_hash`, `full_name`, `is_admin`, `is_active`, audit timestamps |
-| `items` | 4 | `id`, `sku` (unique), `name`, `type` (RAW/FINISHED), `category`, `unit_of_measure`, `stock_quantity Numeric(20,4)`, `reorder_threshold`, `unit_price`, `is_active`, audit (user FKs + timestamps) |
+| `items` | 4 | `id`, `sku` (unique), `name`, `type` (RAW/FINISHED), `category`, `unit_of_measure`, `stock_quantity Numeric(20,4)`, `reorder_threshold`, `unit_price`, `storage_condition?` (enum, pharma), `shelf_life_days?` (pharma), `is_active`, audit (user FKs + timestamps) |
 | `customers` | 5 | `id`, `company_name`, `contact_person`, `email`, `phone`, `customer_code` (unique-when-set), `gstin` (unique-when-set), `is_privileged`, `is_active`, audit |
 | `vendors` | 5 | `id`, `vendor_name`, `contact_person`, `email`, `phone`, `vendor_code`, `gstin`, `is_active`, audit |
 | `vendor_item_terms` | 5 | `id`, `vendor_id` FK, `item_id` FK, `rate Numeric(14,2)`, `discount_percent Numeric(5,2)`, `effective_from`, `effective_to?`, `is_active`, audit |
-| `stock_movements` | 6 | `id`, `item_id` FK, `direction` (IN/OUT), `reason` (PURCHASE/SALE/ADJUSTMENT), `quantity Numeric(14,3)`, `stock_before`, `stock_after`, `reference_type?`, `reference_id?`, `remarks?`, `created_by_user_id`, `created_at` |
+| `stock_movements` | 6 | `id`, `item_id` FK, `direction` (IN/OUT), `reason` (PURCHASE/SALE/ADJUSTMENT), `quantity Numeric(14,3)`, `stock_before`, `stock_after`, `reference_type?`, `reference_id?`, `batch_id?` FK→`batches` (pharma; nullable), `remarks?`, `created_by_user_id`, `created_at` |
 | `purchase_orders` | 7 | `id`, `po_number` (unique, `PO-YYYYMM-NNNNNN`), `vendor_id` FK, `order_date`, `expected_delivery_date?`, `received_date?`, `status` (DRAFT/RECEIVED), `subtotal`, `total`, `notes?`, audit |
 | `purchase_order_items` | 7 | `id`, `purchase_order_id` FK CASCADE, `item_id` FK, `quantity`, `unit_price`, `line_total`, `created_at`. UNIQUE (purchase_order_id, item_id) |
 | `sales_orders` | 8 | `id`, `so_number` (unique, `SO-YYYYMM-NNNNNN`), `customer_id` FK, `order_date`, `expected_delivery_date?`, `shipped_date?`, `status` (DRAFT/SHIPPED), `subtotal`, `total`, `notes?`, audit |
 | `sales_order_items` | 8 | `id`, `sales_order_id` FK CASCADE, `item_id` FK, `quantity`, `unit_price`, `line_total`, `created_at`. UNIQUE (sales_order_id, item_id) |
+| `raw_item_details` | Pharma | `item_id` PK + FK→`items` CASCADE (1:1), `material_classification?` (enum), `pharmacopoeia?` (enum), `is_hazardous`, audit. For `items.type = RAW`. |
+| `finished_item_details` | Pharma | `item_id` PK + FK→`items` CASCADE (1:1), `generic_name?`, `brand_name?`, `strength?`, `dosage_form?` (enum), `pack_size?`, `ingredients?`, `container_specification?`, `selling_price?`, `license_number?`, `registration_code?`, `mrp?`, `drug_schedule?` (enum), `is_prescription_required`, audit. For `items.type = FINISHED`. |
+| `batches` | Pharma | `id`, `item_id` FK→`items`, `batch_number`, `batch_status` (enum, default QUARANTINE), `batch_received_date?`, `manufacturing_date?`, `expiry_date` (NOT NULL), `quantity Numeric(20,4)`, `initial_quantity`, `unit_cost?`, `storage_location?`, `vendor_id?` FK, `received_via_po_id?` FK, audit. UNIQUE (item_id, batch_number) |
+
+> **Pharma tables (Phase 0 of the pharma upgrade — additive, see `proposal.md`).**
+> `item` = the product (stable SKU; referenced by POs/SOs/movements/terms);
+> `batches` = physical lots beneath it. Class-Table Inheritance: `items` holds
+> the common columns, `raw_item_details` / `finished_item_details` the
+> type-specific ones (1:1, shared PK). **Invariant:** every item owns exactly
+> one detail row matching its `type` (service-enforced on create; backfilled for
+> pre-existing rows). **Stock (Phase 0):** `items.stock_quantity` remains the
+> authoritative aggregate; `batches.quantity` is the per-lot figure maintained
+> alongside it by batch-aware flows in later phases
+> (`items.stock_quantity == Σ batches.quantity` for batch-tracked items).
+
+### Enum types (pharma)
+
+| Enum | Used by | Values |
+|---|---|---|
+| `storage_condition` | `items.storage_condition` | `AMBIENT`, `COLD_CHAIN_2_8`, `FROZEN`, `CONTROLLED` |
+| `material_classification` | `raw_item_details` | `API`, `EXCIPIENT`, `SOLVENT`, `REAGENT`, `PACKAGING` |
+| `pharmacopoeia` | `raw_item_details` | `IP`, `BP`, `USP`, `EP`, `JP`, `NONE` |
+| `dosage_form` | `finished_item_details` | `TABLET`, `CAPSULE`, `SYRUP`, `SUSPENSION`, `INJECTION`, `OINTMENT`, `CREAM`, `GEL`, `DROPS`, `POWDER`, `INHALER`, `OTHER` |
+| `drug_schedule` | `finished_item_details` | `NONE`, `H`, `H1`, `X` |
+| `batch_status` | `batches.batch_status` | `QUARANTINE`, `RELEASED`, `EXPIRED`, `REJECTED`, `RECALLED` |
 
 ### DB invariants (CHECK constraints)
 
@@ -263,6 +298,7 @@ These are the rules the database enforces independently of application code:
 - `items.stock_quantity >= 0`
 - `items.unit_price >= 0`
 - `items.reorder_threshold IS NULL OR reorder_threshold >= 0`
+- `items.shelf_life_days IS NULL OR shelf_life_days >= 0`
 - `stock_movements.quantity > 0` (direction carries the sign)
 - `stock_movements.stock_after >= 0` (the ultimate stock-non-negative backstop)
 - `stock_movements`: reference pair consistency — both fields NULL or both NOT NULL
@@ -275,6 +311,12 @@ These are the rules the database enforces independently of application code:
 - `sales_orders.subtotal >= 0`, `total >= 0`
 - `sales_orders`: status↔shipped_date consistency (`SHIPPED ⇔ shipped_date IS NOT NULL`)
 - `sales_order_items.quantity > 0`, `unit_price >= 0`, `line_total >= 0`
+- `finished_item_details.selling_price IS NULL OR selling_price >= 0`
+- `finished_item_details.mrp IS NULL OR mrp >= 0`
+- `batches.quantity >= 0`, `batches.initial_quantity >= 0`
+- `batches.unit_cost IS NULL OR unit_cost >= 0`
+- `batches`: `manufacturing_date IS NULL OR expiry_date >= manufacturing_date`
+- `batches`: UNIQUE (item_id, batch_number)
 
 ---
 
@@ -302,6 +344,13 @@ Each PO/SO action calls `record_movement` per line inside one outer
 transaction. If line N fails (e.g. `INSUFFICIENT_STOCK` on an SO), the
 service explicitly rolls back, so lines 1…N-1 are reverted too. **Stock
 moves completely or not at all.**
+
+> **Batch link:** `stock_movements.batch_id` (pharma) is nullable. **PO receive
+> (1C) and SO ship (1D) set it** — each IN/PURCHASE movement points at the lot it
+> created, and each OUT/SALE movement points at the lot it drew from (FEFO, one
+> movement per lot touched). Manual adjustments leave it NULL. The keystone's
+> stock math is unchanged — `batch_id` is an additional link passed through
+> `record_movement`.
 
 ---
 
@@ -379,28 +428,47 @@ Create an item.
 **Body**
 ```json
 {
-  "sku": "BOT-1L-001",
-  "name": "1L Bottle (Round)",
+  "sku": "PCM-500-001",
+  "name": "Paracetamol 500mg Tablet",
   "type": "FINISHED",
-  "category": "Bottle",
-  "unit_of_measure": "pcs",
-  "unit_price": "45.00",
+  "category": "Analgesic",
+  "unit_of_measure": "strip",
+  "unit_price": "20.00",
   "stock_quantity": "0",
-  "reorder_threshold": "100"
+  "reorder_threshold": "100",
+  "storage_condition": "AMBIENT",
+  "shelf_life_days": 730,
+  "finished_detail": {
+    "generic_name": "Paracetamol",
+    "strength": "500 mg",
+    "dosage_form": "TABLET",
+    "mrp": "25.00",
+    "selling_price": "18.00",
+    "drug_schedule": "H",
+    "is_prescription_required": true
+  }
 }
 ```
+- `storage_condition` (enum) and `shelf_life_days` are optional common-pharma fields.
+- Provide **the subtype block matching `type`**: `raw_detail` for `RAW`,
+  `finished_detail` for `FINISHED`. All detail fields are optional. Sending the
+  *other* type's block → `422 ITEM_DETAIL_TYPE_MISMATCH`. (Both blocks omitted is
+  fine — the detail row is created empty.)
+
 **Returns** `201` — **minimal envelope** `{ id, sku, name, created_at }`. Use `GET /items/{id}` for the full record.
-**Errors** `409 DUPLICATE_SKU`, `422`
+**Errors** `409 DUPLICATE_SKU`, `422` (incl. `ITEM_DETAIL_TYPE_MISMATCH`)
 
 #### `GET /items`
 **Query** `limit, offset, type (RAW|FINISHED), category, search`
-Search is case-insensitive over SKU + name.
+Search is case-insensitive over SKU + name. Each item carries its matching
+`raw_detail` / `finished_detail` block (the other is `null`).
 
 #### `GET /items/{item_id}`
-Returns the full record, including computed `status` (`IN_STOCK | LOW_STOCK | NO_STOCK`).
+Returns the full record, including computed `status` (`IN_STOCK | LOW_STOCK | NO_STOCK`)
+and the matching `raw_detail` / `finished_detail` block.
 
 #### `PATCH /items/{item_id}`
-Partial update. **`sku`**, **`type`**, and **`stock_quantity`** are not patchable — stock changes go through the movement ledger.
+Partial update. **`sku`**, **`type`**, and **`stock_quantity`** are not patchable — stock changes go through the movement ledger. May include `storage_condition`, `shelf_life_days`, and a **partial** `raw_detail` / `finished_detail` patch (only fields sent are changed); a block not matching the item's `type` → `422 ITEM_DETAIL_TYPE_MISMATCH`.
 
 ---
 
@@ -493,6 +561,46 @@ Manual adjustment — the only direct write to the ledger from the API.
 
 ---
 
+### 9.7b Batches (Pharma — lots)
+
+Lot tracking for an item. **Phase 1B is the opening-balance model:** creating a
+lot records that some of the item's *existing* stock belongs to that lot — it
+does **not** change `items.stock_quantity` and writes **no** ledger movement.
+(New stock entering inventory is the PO-receive flow, Phase 1C.)
+
+#### `POST /batches`
+```json
+{
+  "item_id": "...",
+  "batch_number": "MFG-LOT-2026-07",
+  "expiry_date": "2028-07-01",
+  "manufacturing_date": "2026-07-01",
+  "quantity": "40",
+  "unit_cost": "12.50",
+  "storage_location": "Cold Room A / Rack 3",
+  "batch_status": "RELEASED",
+  "batch_received_date": "2026-07-05"
+}
+```
+- Only `item_id`, `batch_number`, `expiry_date`, `quantity` (> 0) are required.
+- `batch_status` defaults to `QUARANTINE`; set it (e.g. `RELEASED`) for
+  already-usable legacy stock. The service sets `initial_quantity = quantity`.
+- **Reconciliation rule:** `Σ(existing lot qty for item) + quantity ≤ items.stock_quantity`.
+
+**Returns** `201` — the full lot, including computed `is_expired`.
+**Errors** `404 ITEM_NOT_FOUND`; `409 DUPLICATE_BATCH` (unique `(item_id, batch_number)`);
+`409 BATCH_EXCEEDS_UNBATCHED_STOCK`; `422` (expiry before manufacture, non-positive quantity).
+
+#### `GET /batches`
+**Query** `limit, offset, item_id, status (QUARANTINE|RELEASED|EXPIRED|REJECTED|RECALLED), expiring_before (date)`
+Ordered soonest-expiry-first. `expiring_before` returns lots with
+`expiry_date <= <date>` — drives "expiring soon" reports.
+
+#### `GET /batches/{batch_id}`
+Returns one lot (incl. `is_expired`). `404 BATCH_NOT_FOUND` if unknown.
+
+---
+
 ### 9.8 Purchase Orders (Phase 7)
 
 **State machine:** `DRAFT → RECEIVED` (terminal). No PATCH, no DELETE.
@@ -525,14 +633,36 @@ and uses `rate * (1 − discount_percent/100)` quantized to 2 dp HALF_UP.
 Returns full PO including all lines.
 
 #### `POST /purchase-orders/{po_id}/receive`
-The keystone. Atomically:
+The keystone. **Requires a body** (Phase 1C) — one batch entry per PO line,
+matched by `item_id`, with an operator-supplied lot number and expiry:
 
-1. `SELECT FOR UPDATE` the PO.
-2. For each line in `item_id`-sorted order: `record_movement(IN, PURCHASE, reference_type='PURCHASE_ORDER', reference_id=po.id)`.
-3. Sets `status=RECEIVED, received_date=today`.
-4. Single commit.
+```json
+{
+  "lines": [
+    {
+      "item_id": "...",
+      "batch_number": "MFG-LOT-2026-07",
+      "expiry_date": "2028-07-01",
+      "manufacturing_date": "2026-07-01",
+      "storage_location": "Cold Room A"
+    }
+  ]
+}
+```
 
-**Errors** `404 PURCHASE_ORDER_NOT_FOUND`, `409 PO_NOT_DRAFT` (state-boundary idempotency).
+Atomically, in `item_id`-sorted order:
+
+1. `SELECT FOR UPDATE` the PO; require DRAFT.
+2. Validate the entries cover **exactly** the PO's lines; pre-check each lot
+   number is free for its item.
+3. For each line: create a `batches` row (`quantity` = line qty,
+   `unit_cost` = line price, `vendor_id` = PO vendor, `received_via_po_id` = PO,
+   status `QUARANTINE`), then `record_movement(IN, PURCHASE, batch_id=<lot>, reference_type='PURCHASE_ORDER', reference_id=po.id)`.
+4. Sets `status=RECEIVED, received_date=today`. Single commit.
+
+**Errors** `404 PURCHASE_ORDER_NOT_FOUND`, `409 PO_NOT_DRAFT` (state-boundary
+idempotency), `422 RECEIVE_LINES_MISMATCH` (entries don't cover the lines
+exactly), `409 DUPLICATE_BATCH` (lot number already used for an item).
 
 ---
 
@@ -569,18 +699,29 @@ stock will be procured before shipping. Stock is enforced at `/ship`.
 #### `GET /sales-orders/{so_id}`
 
 #### `POST /sales-orders/{so_id}/ship`
-The OUT keystone — and the moment Phase 6's `SELECT FOR UPDATE` earns its
-keep. Atomically:
+The OUT keystone. **No body** — lot selection is automatic (FEFO). Atomically:
 
 1. `SELECT FOR UPDATE` the SO.
-2. For each line in `item_id`-sorted order: `record_movement(OUT, SALE, reference_type='SALES_ORDER', reference_id=so.id)`.
+2. For each line in `item_id`-sorted order, consume the item's lots
+   **First-Expiry-First-Out** (Phase 1D): the earliest-expiry non-expired lot
+   is drained first, then the next, writing **one OUT/SALE movement per lot
+   touched** (each carrying `batch_id`). Lot quantities and `items.stock_quantity`
+   drop by the same amount.
 3. Sets `status=SHIPPED, shipped_date=today`.
 4. Single commit.
+
+**Pharma rule:** only lot-tracked, non-expired stock ships. Expired lots are
+skipped; if an item's stock isn't (fully) in lots, the uncovered portion is
+**not** shippable. (QC-status gating — RELEASED-only — is deferred to the QC
+workflow; for now any non-expired lot is eligible.)
 
 **Failure modes:**
 - `404 SALES_ORDER_NOT_FOUND`
 - `409 SO_NOT_DRAFT` (already shipped — state-boundary idempotency)
-- `409 INSUFFICIENT_STOCK` — any line would push stock below zero. **Entire ship is rolled back.** No partial stock, no partial ledger, SO stays DRAFT and can be retried after stock arrives.
+- `409 INSUFFICIENT_STOCK` — the item's non-expired lots can't cover a line
+  (even if `items.stock_quantity` looks sufficient, when stock isn't lot-tracked).
+  **Entire ship is rolled back** — no partial stock, no partial ledger, SO stays
+  DRAFT and can be retried after lots are procured/recorded.
 
 ---
 

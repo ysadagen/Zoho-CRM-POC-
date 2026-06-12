@@ -22,6 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.batches import router as batches_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.items import router as items_router
 from app.api.v1.purchase_orders import router as purchase_orders_router
@@ -255,6 +256,7 @@ def create_app() -> FastAPI:
     app.include_router(vendors_router, prefix="/api/v1")
     app.include_router(vendor_terms_router, prefix="/api/v1")
     app.include_router(stock_movements_router, prefix="/api/v1")
+    app.include_router(batches_router, prefix="/api/v1")
     app.include_router(purchase_orders_router, prefix="/api/v1")
     app.include_router(sales_orders_router, prefix="/api/v1")
 

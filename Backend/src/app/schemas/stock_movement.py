@@ -59,6 +59,7 @@ class StockMovementRead(BaseModel):
     stock_after: Decimal
     reference_type: str | None
     reference_id: uuid.UUID | None
+    batch_id: uuid.UUID | None
     remarks: str | None
     created_by_user_id: uuid.UUID
     created_at: datetime

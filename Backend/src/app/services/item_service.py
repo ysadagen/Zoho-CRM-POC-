@@ -13,10 +13,14 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.models.finished_item_detail import FinishedItemDetail
 from app.models.item import Item, ItemType
+from app.models.raw_item_detail import RawItemDetail
 from app.repositories.item_repo import ItemRepository
+from app.schemas.finished_item_detail import FinishedItemDetailIn
 from app.schemas.item import ItemCreate, ItemUpdate
+from app.schemas.raw_item_detail import RawItemDetailIn
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,12 @@ class ItemService:
         ``IntegrityError`` catch covers the narrow race window where
         two concurrent requests both pass the pre-check.
         """
+        # Reject a detail block that doesn't match the item's type before
+        # we touch the DB (single source of truth for this rule — §7 422).
+        self._reject_mismatched_detail(
+            payload.type, raw=payload.raw_detail, finished=payload.finished_detail
+        )
+
         existing = await self._items.get_by_sku(payload.sku)
         if existing is not None:
             raise ConflictError(
@@ -57,9 +67,22 @@ class ItemService:
             stock_quantity=payload.stock_quantity,
             reorder_threshold=payload.reorder_threshold,
             unit_price=payload.unit_price,
+            storage_condition=payload.storage_condition,
+            shelf_life_days=payload.shelf_life_days,
             created_by_user_id=actor_id,
             updated_by_user_id=actor_id,
         )
+        # Attach the matching 1:1 detail via the relationship so it cascades
+        # on save and the invariant (every item owns exactly one detail row)
+        # holds. Subtype attributes the client sent are applied; the rest
+        # fall back to column defaults.
+        if payload.type == ItemType.RAW:
+            item.raw_detail = self._new_raw_detail(payload.raw_detail, actor_id=actor_id)
+        else:
+            item.finished_detail = self._new_finished_detail(
+                payload.finished_detail, actor_id=actor_id
+            )
+
         try:
             item = await self._items.add(item)
             await self._session.commit()
@@ -70,15 +93,48 @@ class ItemService:
                 code="SKU_ALREADY_EXISTS",
             ) from exc
 
+        detail_table = "raw_item_details" if item.type == ItemType.RAW else "finished_item_details"
         logger.info(
             "item_created",
             extra={
                 "item_id": str(item.id),
                 "sku": item.sku,
                 "type": item.type.value,
+                "detail_table": detail_table,
             },
         )
         return item
+
+    @staticmethod
+    def _reject_mismatched_detail(
+        item_type: ItemType,
+        *,
+        raw: object | None,
+        finished: object | None,
+    ) -> None:
+        """Raise 422 if a detail block doesn't match the item's type."""
+        if item_type == ItemType.RAW and finished is not None:
+            raise ValidationError(
+                "finished_detail is not valid for a RAW item",
+                code="ITEM_DETAIL_TYPE_MISMATCH",
+            )
+        if item_type == ItemType.FINISHED and raw is not None:
+            raise ValidationError(
+                "raw_detail is not valid for a FINISHED item",
+                code="ITEM_DETAIL_TYPE_MISMATCH",
+            )
+
+    @staticmethod
+    def _new_raw_detail(payload: RawItemDetailIn | None, *, actor_id: uuid.UUID) -> RawItemDetail:
+        data = payload.model_dump(exclude_unset=True) if payload is not None else {}
+        return RawItemDetail(created_by_user_id=actor_id, updated_by_user_id=actor_id, **data)
+
+    @staticmethod
+    def _new_finished_detail(
+        payload: FinishedItemDetailIn | None, *, actor_id: uuid.UUID
+    ) -> FinishedItemDetail:
+        data = payload.model_dump(exclude_unset=True) if payload is not None else {}
+        return FinishedItemDetail(created_by_user_id=actor_id, updated_by_user_id=actor_id, **data)
 
     async def get(self, item_id: uuid.UUID) -> Item:
         """Return one item or raise :class:`NotFoundError`."""
@@ -116,28 +172,73 @@ class ItemService:
         Only fields the client actually sent (``exclude_unset=True``) are
         applied — omitted fields are preserved. ``sku``, ``type``, and
         ``stock_quantity`` are not in :class:`ItemUpdate` at all, so
-        attempts to send them yield a 422 at the schema layer.
+        attempts to send them yield a 422 at the schema layer. A subtype
+        detail block (``raw_detail`` / ``finished_detail``) that doesn't
+        match the item's type yields a 422 ``ITEM_DETAIL_TYPE_MISMATCH``.
 
         ``updated_by_user_id`` is overwritten on every successful update
         so the audit trail records *who* most recently touched the row.
         """
         item = await self.get(item_id)
         updates = payload.model_dump(exclude_unset=True)
+        # Pull the nested detail patches out of the scalar update loop.
+        raw_detail = updates.pop("raw_detail", None)
+        finished_detail = updates.pop("finished_detail", None)
+        self._reject_mismatched_detail(item.type, raw=raw_detail, finished=finished_detail)
+
         for field, value in updates.items():
             setattr(item, field, value)
+        detail_patched = self._patch_detail(
+            item, raw=raw_detail, finished=finished_detail, actor_id=actor_id
+        )
         item.updated_by_user_id = actor_id
         await self._session.commit()
-        # ``updated_at`` is server-managed via ``onupdate=func.now()``; SQLAlchemy
-        # marks it stale on UPDATE so it can fetch the new server value back.
-        # Refresh explicitly here so the next attribute read (Pydantic's
-        # model_validate in the route) doesn't trigger a sync I/O outside
-        # async context (MissingGreenlet).
-        await self._session.refresh(item)
         logger.info(
             "item_updated",
             extra={
                 "item_id": str(item.id),
                 "fields": sorted(updates.keys()),
+                "detail_patched": detail_patched,
             },
         )
-        return item
+        # Re-fetch through ``get`` so the response carries the server-managed
+        # ``updated_at`` and the eager-loaded (selectin) detail relationship —
+        # avoids a sync attribute fetch outside async context (MissingGreenlet).
+        return await self.get(item_id)
+
+    def _patch_detail(
+        self,
+        item: Item,
+        *,
+        raw: dict[str, object] | None,
+        finished: dict[str, object] | None,
+        actor_id: uuid.UUID,
+    ) -> bool:
+        """Apply the matching detail patch in place. Returns whether it ran.
+
+        ``_reject_mismatched_detail`` has already guaranteed at most the
+        block matching ``item.type`` is present.
+        """
+        if item.type == ItemType.RAW:
+            data = raw
+            if data is None:
+                return False
+            target: RawItemDetail | FinishedItemDetail | None = item.raw_detail
+            if target is None:  # defensive — every item gets a detail row on create
+                target = RawItemDetail(created_by_user_id=actor_id, updated_by_user_id=actor_id)
+                item.raw_detail = target
+        else:
+            data = finished
+            if data is None:
+                return False
+            target = item.finished_detail
+            if target is None:
+                target = FinishedItemDetail(
+                    created_by_user_id=actor_id, updated_by_user_id=actor_id
+                )
+                item.finished_detail = target
+
+        for field, value in data.items():
+            setattr(target, field, value)
+        target.updated_by_user_id = actor_id
+        return True

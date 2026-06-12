@@ -20,15 +20,18 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.finished_item_detail import FinishedItemDetail
+from app.models.raw_item_detail import RawItemDetail
 
 
 class ItemType(StrEnum):
@@ -36,6 +39,20 @@ class ItemType(StrEnum):
 
     RAW = "RAW"
     FINISHED = "FINISHED"
+
+
+class StorageCondition(StrEnum):
+    """Required storage environment for a product (pharma).
+
+    A product-level property (the same for every lot of the item) — the
+    *actual* shelf life of a physical lot is recorded on its ``batches``
+    row via ``expiry_date``.
+    """
+
+    AMBIENT = "AMBIENT"
+    COLD_CHAIN_2_8 = "COLD_CHAIN_2_8"
+    FROZEN = "FROZEN"
+    CONTROLLED = "CONTROLLED"
 
 
 class Item(Base):
@@ -63,6 +80,11 @@ class Item(Base):
         CheckConstraint(
             "unit_price >= 0",
             name="ck_items_unit_price_non_negative",
+        ),
+        # Shelf life is a span of days; NULL means "not configured".
+        CheckConstraint(
+            "shelf_life_days IS NULL OR shelf_life_days >= 0",
+            name="ck_items_shelf_life_days_non_negative",
         ),
     )
 
@@ -104,6 +126,20 @@ class Item(Base):
     # (no fractional paise).
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
+    # Common-pharma attributes shared by RAW and FINISHED. Nullable so
+    # pre-pharma rows (and create calls that omit them) stay valid; the
+    # subtype-specific attributes live in raw_item_details /
+    # finished_item_details, and per-lot expiry lives on batches.
+    storage_condition: Mapped[StorageCondition | None] = mapped_column(
+        Enum(
+            StorageCondition,
+            name="storage_condition",
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=True,
+    )
+    shelf_life_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -137,4 +173,21 @@ class Item(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    # Subtype detail (Class-Table Inheritance) — exactly one is populated,
+    # matching ``type``. ``lazy="selectin"`` eager-loads both on every item
+    # query so reads never trigger lazy I/O (MissingGreenlet) and avoid N+1;
+    # ``delete-orphan`` ties the detail's lifecycle to the parent item.
+    raw_detail: Mapped[RawItemDetail | None] = relationship(
+        "RawItemDetail",
+        uselist=False,
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+    finished_detail: Mapped[FinishedItemDetail | None] = relationship(
+        "FinishedItemDetail",
+        uselist=False,
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )

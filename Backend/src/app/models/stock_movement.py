@@ -136,6 +136,18 @@ class StockMovement(Base):
 
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Which physical lot this movement touched. Nullable: rows predating
+    # batch tracking carry NULL, and not every movement is lot-specific.
+    # Real FK (unlike reference_type/reference_id) because the target table
+    # is always ``batches``. Batch-aware flows (PO receive, SO ship via
+    # FEFO) set it; the manual-adjustment path leaves it NULL for now.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("batches.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
     # Append-only: no ``updated_at`` and no ``updated_by_user_id``.
     # The act of writing here is the only mutation; the row is then
     # immutable. Audit fields use the same RESTRICT FK pattern as the

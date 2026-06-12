@@ -45,6 +45,7 @@ from app.models.stock_movement import (
     MovementDirection,
     MovementReason,
 )
+from app.repositories.batch_repo import BatchRepository
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.item_repo import ItemRepository
 from app.repositories.sales_order_repo import SalesOrderRepository
@@ -64,6 +65,7 @@ class SalesOrderService:
         self._sos = SalesOrderRepository(session)
         self._customers = CustomerRepository(session)
         self._items = ItemRepository(session)
+        self._batches = BatchRepository(session)
         self._movements = StockMovementService(session)
 
     # ------------------------------------------------------------------
@@ -210,14 +212,19 @@ class SalesOrderService:
 
         1. ``SELECT ... FOR UPDATE`` the SO (idempotency lock).
         2. 404 if missing; 409 ``SO_NOT_DRAFT`` if status != DRAFT.
-        3. For each line (ordered by ``item_id``):
-           ``record_movement(OUT, SALE, reference_type='SALES_ORDER',
-           reference_id=so.id, quantity=line.quantity, remarks='SO {n}')``.
-           ``record_movement`` raises 409 ``INSUFFICIENT_STOCK`` if
-           a line would push stock below zero — that propagates and
-           rolls back **all** prior lines plus the SO header change.
+        3. For each line (ordered by ``item_id``): consume the item's lots
+           **First-Expiry-First-Out** (:meth:`_consume_line_fefo`), one OUT
+           movement per lot touched (each carrying ``batch_id``). If the
+           item's non-expired lots can't cover the line, raise 409
+           ``INSUFFICIENT_STOCK`` — that propagates and rolls back **all**
+           prior lines plus the SO header change.
         4. Update SO header.
         5. Single commit. Refresh.
+
+        Pharma rule: only lot-tracked, non-expired stock can ship. If an
+        item has stock that isn't in any lot, that portion is *not*
+        shippable — shipping untraceable stock is exactly what this
+        system exists to prevent.
         """
         so = await self._sos.get_by_id_for_update(so_id)
         if so is None:
@@ -236,6 +243,7 @@ class SalesOrderService:
         # including against concurrent PO receives.
         lines_sorted = sorted(so.items, key=lambda li: li.item_id)
         remarks = f"SO {so.so_number}"
+        today = date.today()
 
         # Atomicity guard: any failure between the first record_movement
         # flush and the final commit (typically INSUFFICIENT_STOCK from
@@ -244,20 +252,14 @@ class SalesOrderService:
         # We can't rely on the caller's session context manager to do
         # this; the service owns the contract.
         try:
+            movement_count = 0
             for line in lines_sorted:
-                await self._movements.record_movement(
-                    item_id=line.item_id,
-                    direction=MovementDirection.OUT,
-                    reason=MovementReason.SALE,
-                    quantity=line.quantity,
-                    actor_id=actor_id,
-                    reference_type=REFERENCE_TYPE_SALES_ORDER,
-                    reference_id=so.id,
-                    remarks=remarks,
+                movement_count += await self._consume_line_fefo(
+                    line, so=so, actor_id=actor_id, as_of=today, remarks=remarks
                 )
 
             so.status = SalesOrderStatus.SHIPPED
-            so.shipped_date = date.today()
+            so.shipped_date = today
             so.updated_by_user_id = actor_id
 
             await self._session.commit()
@@ -274,7 +276,58 @@ class SalesOrderService:
                 "so_id": str(so.id),
                 "so_number": so.so_number,
                 "line_count": len(lines_sorted),
+                "movement_count": movement_count,
                 "actor_id": str(actor_id),
             },
         )
         return so
+
+    async def _consume_line_fefo(
+        self,
+        line: SalesOrderItem,
+        *,
+        so: SalesOrder,
+        actor_id: uuid.UUID,
+        as_of: date,
+        remarks: str,
+    ) -> int:
+        """Consume one SO line's quantity from the item's lots, FEFO.
+
+        Returns the number of OUT movements written (one per lot touched).
+        Raises 409 ``INSUFFICIENT_STOCK`` if the item's non-expired lots
+        can't cover the line — the uncovered portion may be untraceable
+        (unbatched) stock, which a pharma system must not ship.
+        """
+        lots = await self._batches.list_consumable_for_item(line.item_id, as_of=as_of)
+        available = sum((lot.quantity for lot in lots), Decimal("0"))
+        if available < line.quantity:
+            raise ConflictError(
+                f"Insufficient lot-tracked stock for item {line.item_id}: "
+                f"{available} available across non-expired lots, {line.quantity} requested",
+                code="INSUFFICIENT_STOCK",
+            )
+
+        remaining = line.quantity
+        movements = 0
+        for lot in lots:
+            if remaining <= 0:
+                break
+            take = min(remaining, lot.quantity)
+            # Decrement the lot, then record the OUT movement (which locks the
+            # item row and decrements items.stock_quantity by the same amount,
+            # keeping Σ lot qty ≤ item stock invariant intact).
+            lot.quantity -= take
+            await self._movements.record_movement(
+                item_id=line.item_id,
+                direction=MovementDirection.OUT,
+                reason=MovementReason.SALE,
+                quantity=take,
+                actor_id=actor_id,
+                reference_type=REFERENCE_TYPE_SALES_ORDER,
+                reference_id=so.id,
+                remarks=remarks,
+                batch_id=lot.id,
+            )
+            remaining -= take
+            movements += 1
+        return movements

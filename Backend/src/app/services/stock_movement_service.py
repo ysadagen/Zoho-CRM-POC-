@@ -64,10 +64,15 @@ class StockMovementService:
         reference_type: str | None = None,
         reference_id: uuid.UUID | None = None,
         remarks: str | None = None,
+        batch_id: uuid.UUID | None = None,
     ) -> StockMovement:
         """Atomically apply a stock change AND insert the ledger row.
 
         Caller is responsible for committing the transaction.
+
+        ``batch_id`` links the movement to the physical lot it touched
+        (set by batch-aware flows like PO receive / SO ship); ``None`` for
+        movements not tied to a specific lot.
 
         Raises:
             NotFoundError: if ``item_id`` doesn't match a row.
@@ -114,6 +119,7 @@ class StockMovementService:
             reference_type=reference_type,
             reference_id=reference_id,
             remarks=remarks,
+            batch_id=batch_id,
             created_by_user_id=actor_id,
         )
         movement = await self._movements.add(movement)

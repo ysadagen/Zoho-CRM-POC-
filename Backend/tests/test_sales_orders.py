@@ -98,6 +98,32 @@ def _so_payload(
     return base
 
 
+async def _lot(
+    client: AsyncClient,
+    item_id: str,
+    *,
+    quantity: str,
+    batch_number: str = "LOT-1",
+    expiry: str = "2035-01-01",
+) -> str:
+    """Record an opening-balance lot so the item's stock is lot-tracked.
+
+    Only lot-tracked, non-expired stock is shippable (Phase 1D), so the ship
+    tests give their stock a lot first.
+    """
+    resp = await client.post(
+        "/api/v1/batches",
+        json={
+            "item_id": item_id,
+            "batch_number": batch_number,
+            "expiry_date": expiry,
+            "quantity": quantity,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return str(resp.json()["id"])
+
+
 # ---------------------------------------------------------------------------
 # Auth wall
 # ---------------------------------------------------------------------------
@@ -512,6 +538,7 @@ async def test_list_sos_filter_by_status(
 ) -> None:
     customer_id = await _create_customer(authenticated_client)
     item_id = await _create_item(authenticated_client, stock="100")
+    await _lot(authenticated_client, item_id, quantity="100")
     draft = await authenticated_client.post(
         SALES_ORDERS_URL,
         json=_so_payload(customer_id, [_line(item_id, quantity="2", unit_price="5")]),
@@ -547,6 +574,8 @@ async def test_ship_so_decreases_stock_and_records_ledger(
     customer_id = await _create_customer(authenticated_client)
     item_a = await _create_item(authenticated_client, stock="100")
     item_b = await _create_item(authenticated_client, stock="50")
+    await _lot(authenticated_client, item_a, quantity="100")
+    await _lot(authenticated_client, item_b, quantity="50")
 
     created = await authenticated_client.post(
         SALES_ORDERS_URL,
@@ -606,6 +635,8 @@ async def test_ship_so_insufficient_stock_returns_409_and_rolls_back_all_lines(
     customer_id = await _create_customer(authenticated_client)
     item_a = await _create_item(authenticated_client, stock="100")
     item_b = await _create_item(authenticated_client, stock="5")  # too little
+    await _lot(authenticated_client, item_a, quantity="100")
+    await _lot(authenticated_client, item_b, quantity="5")
 
     created = await authenticated_client.post(
         SALES_ORDERS_URL,
@@ -647,6 +678,7 @@ async def test_ship_so_twice_returns_409(
     """Idempotency at the state boundary — a second ship is rejected."""
     customer_id = await _create_customer(authenticated_client)
     item_id = await _create_item(authenticated_client, stock="100")
+    await _lot(authenticated_client, item_id, quantity="100")
     created = await authenticated_client.post(
         SALES_ORDERS_URL,
         json=_so_payload(customer_id, [_line(item_id, quantity="5", unit_price="1")]),
@@ -668,3 +700,101 @@ async def test_ship_so_not_found_returns_404(
     response = await authenticated_client.post(f"{SALES_ORDERS_URL}/{uuid.uuid4()}/ship")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "SALES_ORDER_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Ship → FEFO lot consumption (Phase 1D)
+# ---------------------------------------------------------------------------
+
+
+async def _lots_by_number(client: AsyncClient, item_id: str) -> dict[str, dict[str, object]]:
+    body = (await client.get(f"/api/v1/batches?item_id={item_id}")).json()
+    return {lot["batch_number"]: lot for lot in body["items"]}
+
+
+async def test_ship_consumes_lots_earliest_expiry_first(
+    authenticated_client: AsyncClient,
+) -> None:
+    """FEFO: a line spanning lots drains the earliest-expiry lot fully before
+    touching a later one, writing one OUT movement per lot touched."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    await _lot(
+        authenticated_client, item_id, quantity="30", batch_number="EARLY", expiry="2027-01-01"
+    )
+    await _lot(
+        authenticated_client, item_id, quantity="70", batch_number="LATE", expiry="2030-01-01"
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="50", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 200, resp.text
+
+    # Earliest-expiry lot fully drained; the later lot covers the rest.
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["EARLY"]["quantity"])) == Decimal("0")
+    assert Decimal(str(lots["LATE"]["quantity"])) == Decimal("50")
+
+    # Item stock fell by the full line quantity.
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("50")
+
+    # One OUT movement per lot touched, each linked to its lot.
+    ledger = (await authenticated_client.get(f"{STOCK_MOVEMENTS_URL}?item_id={item_id}")).json()
+    assert ledger["total"] == 2
+    by_batch = {m["batch_id"]: m for m in ledger["items"]}
+    assert Decimal(str(by_batch[lots["EARLY"]["id"]]["quantity"])) == Decimal("30")
+    assert Decimal(str(by_batch[lots["LATE"]["id"]]["quantity"])) == Decimal("20")
+
+
+async def test_ship_skips_expired_lots(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Stock sitting only in an expired lot cannot ship — expired stock is
+    excluded from FEFO, so the order fails 409."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="50")
+    await _lot(
+        authenticated_client, item_id, quantity="50", batch_number="OLD", expiry="2020-01-01"
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="10", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("50")  # untouched
+
+
+async def test_ship_rejects_unbatched_stock(
+    authenticated_client: AsyncClient,
+) -> None:
+    """The pharma rule: only lot-tracked stock ships. An item with 100 in
+    stock but only 30 in lots can't ship 50 — even though item stock looks
+    sufficient — because the uncovered 20 would be untraceable."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    await _lot(authenticated_client, item_id, quantity="30", batch_number="ONLY")  # 70 unbatched
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="50", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+    # Nothing consumed — stock, lot, and SO state all intact.
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("100")
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["ONLY"]["quantity"])) == Decimal("30")
+    so = (await authenticated_client.get(f"{SALES_ORDERS_URL}/{created.json()['id']}")).json()
+    assert so["status"] == "DRAFT"

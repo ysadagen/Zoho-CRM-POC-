@@ -28,6 +28,7 @@ from app.schemas.purchase_order import (
     PurchaseOrderCreate,
     PurchaseOrderList,
     PurchaseOrderRead,
+    PurchaseOrderReceive,
 )
 from app.services.purchase_order_service import PurchaseOrderService
 
@@ -123,18 +124,24 @@ async def get_purchase_order(
 )
 async def receive_purchase_order(
     po_id: uuid.UUID,
+    payload: PurchaseOrderReceive,
     session: _Session,
     current_user: _CurrentUser,
 ) -> PurchaseOrderRead:
-    """Receive a PO.
+    """Receive a PO, recording a lot per line.
 
-    Transactionally: increments ``items.stock_quantity`` for each
-    line, inserts one ``stock_movements`` row per line (IN, PURCHASE),
-    flips status to RECEIVED, stamps ``received_date=today``.
+    The body supplies one batch entry per PO line (operator-supplied
+    ``batch_number`` + ``expiry_date``, matched by ``item_id``).
+    Transactionally: creates a ``batches`` row per line, increments
+    ``items.stock_quantity``, inserts one ``stock_movements`` row per
+    line (IN, PURCHASE, with ``batch_id`` set), flips status to RECEIVED,
+    stamps ``received_date=today``.
 
-    Returns 409 ``PO_NOT_DRAFT`` if the PO has already been received
-    (idempotency at the state boundary — prevents double-counting
-    stock), 404 ``PURCHASE_ORDER_NOT_FOUND`` if the PO does not exist.
+    Errors: 409 ``PO_NOT_DRAFT`` if already received (idempotency at the
+    state boundary — prevents double-counting), 404
+    ``PURCHASE_ORDER_NOT_FOUND`` if missing, 422 ``RECEIVE_LINES_MISMATCH``
+    if the batch entries don't cover exactly the PO's lines, 409
+    ``DUPLICATE_BATCH`` if a lot number already exists for its item.
     """
-    po = await PurchaseOrderService(session).receive_po(po_id, actor_id=current_user.id)
+    po = await PurchaseOrderService(session).receive_po(po_id, payload, actor_id=current_user.id)
     return PurchaseOrderRead.model_validate(po)

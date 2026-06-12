@@ -18,8 +18,9 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.purchase_order import PurchaseOrderStatus
 
@@ -29,6 +30,8 @@ __all__ = [
     "PurchaseOrderLineRead",
     "PurchaseOrderList",
     "PurchaseOrderRead",
+    "PurchaseOrderReceive",
+    "PurchaseOrderReceiveLine",
     "PurchaseOrderStatus",
 ]
 
@@ -59,6 +62,42 @@ class PurchaseOrderCreate(BaseModel):
     expected_delivery_date: date | None = None
     notes: str | None = Field(default=None, max_length=2000)
     items: list[PurchaseOrderLineCreate] = Field(min_length=1)
+
+
+class PurchaseOrderReceiveLine(BaseModel):
+    """Batch (lot) details for one PO line, supplied at receive time.
+
+    The operator supplies the manufacturer's ``batch_number`` and the
+    lot's ``expiry_date`` (required — pharma stock must enter with an
+    expiry). One entry per PO line, matched by ``item_id``. The received
+    quantity and unit cost come from the PO line itself, not from here.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    item_id: uuid.UUID
+    batch_number: str = Field(min_length=1, max_length=64)
+    expiry_date: date
+    manufacturing_date: date | None = None
+    storage_location: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def _expiry_on_or_after_manufacture(self) -> Self:
+        if self.manufacturing_date is not None and self.expiry_date < self.manufacturing_date:
+            raise ValueError("expiry_date must be on or after manufacturing_date")
+        return self
+
+
+class PurchaseOrderReceive(BaseModel):
+    """Payload for ``POST /purchase-orders/{id}/receive``.
+
+    One batch entry per PO line — the service requires the entries to
+    cover exactly the PO's lines (no missing, no extra).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[PurchaseOrderReceiveLine] = Field(min_length=1)
 
 
 class PurchaseOrderLineRead(BaseModel):
