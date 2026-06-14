@@ -5,14 +5,16 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.item import ItemType
 from app.models.user import User
+from app.schemas.bulk_upload import BulkUploadResult
 from app.schemas.item import ItemCreate, ItemCreated, ItemList, ItemRead, ItemUpdate
+from app.services.bulk_upload_service import BulkUploadService
 from app.services.item_service import ItemService
 
 router = APIRouter(prefix="/items", tags=["items"])
@@ -77,6 +79,32 @@ async def list_items(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.post(
+    "/bulk-upload",
+    response_model=BulkUploadResult,
+    summary="Bulk-create items from a CSV or XLSX file",
+)
+async def bulk_upload_items(
+    session: _Session,
+    current_user: _CurrentUser,
+    file: Annotated[UploadFile, File()],
+) -> BulkUploadResult:
+    """Bulk-create items from an uploaded CSV or ``.xlsx`` file.
+
+    Each row is validated and created independently — a row failure does
+    not abort the batch. The response is always ``200`` with a per-row
+    report (see :class:`BulkUploadResult`). Structural problems with the
+    request itself (unsupported file type, empty file, missing required
+    columns, or too many rows) are rejected as ``422`` with the standard
+    error envelope instead of a row result. Row numbers are 1-based and
+    include the header row (row 1), matching what a spreadsheet shows.
+    """
+    content = await file.read()
+    return await BulkUploadService(session).process_file(
+        filename=file.filename or "", content=content, actor_id=current_user.id
     )
 
 
