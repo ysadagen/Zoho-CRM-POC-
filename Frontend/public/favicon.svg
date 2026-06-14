@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#393949"/>
+  <text x="32" y="38" text-anchor="middle" font-family="'Cabin Sketch', cursive" font-weight="700" font-size="26" fill="#eeaa42">A</text>
+  <path d="M14 50 C 24 46, 40 54, 50 48" fill="none" stroke="#bd4d35" stroke-width="3" stroke-linecap="round"/>
+</svg>

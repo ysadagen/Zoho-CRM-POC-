@@ -1,0 +1,794 @@
+{
+  "info": {
+    "_postman_id": "8b1c5a90-2b9a-4f4f-9b30-1ea4d3a6f0b1",
+    "name": "Inventory Backend",
+    "description": "All 37 endpoints exposed by the Inventory Backend (Phases 1-8).\n\nQuick start:\n1. Run the Auth > Register call once.\n2. Run Auth > Login - the test script stores the token in {{access_token}} so every other request inherits the Bearer header.\n3. From there, exercise any folder. Variables like {{item_id}}, {{vendor_id}} etc. are populated by their corresponding Create requests via the test scripts.\n\nThe collection-level Authorization is set to Bearer Token {{access_token}}; individual endpoints override this only when they must be unauthenticated (Auth/* and Probes/*).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "api_prefix",
+      "value": "/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customer_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vendor_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "term_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "po_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "so_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Empty top-level pre-request hook; per-folder scripts handle anything specific."
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Probes",
+      "item": [
+        {
+          "name": "GET /health (liveness)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Liveness probe. Returns 200 if the Python process is running. Does NOT check downstream dependencies — use /ready for that. Wire to k8s livenessProbe."
+          }
+        },
+        {
+          "name": "GET /ready (readiness)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ready",
+              "host": ["{{base_url}}"],
+              "path": ["ready"]
+            },
+            "description": "Readiness probe. Pings the DB with SELECT 1 under a 1-second timeout.\n\nReturns:\n- 200 {\"status\":\"ready\"} when the DB is reachable.\n- 503 with the project error envelope (code: DB_UNAVAILABLE) when it isn't.\n\nWire to k8s readinessProbe so traffic routes away from a pod whose DB is down."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /auth/register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('user_id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"operator@example.com\",\n  \"full_name\": \"Test Operator\",\n  \"password\": \"correct-horse-battery-staple\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "auth", "register"]
+            },
+            "description": "Register a new user. Returns 201 with the full user record.\n\nErrors:\n- 409 EMAIL_ALREADY_REGISTERED - the email is already in use.\n- 422 - Pydantic validation (invalid email, password too short, etc.)."
+          }
+        },
+        {
+          "name": "POST /auth/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('access_token', body.access_token);",
+                  "pm.collectionVariables.set('user_id', body.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"operator@example.com\",\n  \"password\": \"correct-horse-battery-staple\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "auth", "login"]
+            },
+            "description": "Authenticate. Returns 200 with `{access_token, token_type, expires_in, user}`. The test script stashes the token in {{access_token}}.\n\n`expires_in` is the token lifetime in seconds (default 3600 = 1 hour, configurable via ACCESS_TOKEN_EXPIRE_MINUTES). There is no /refresh endpoint — when this lapses, redirect to login.\n\nErrors:\n- 401 INVALID_CREDENTIALS - returned for both unknown email and wrong password (no enumeration leak)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "GET /users (admin only)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/users?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "users"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "List all users. Admin-only.\n\nErrors:\n- 401 MISSING_TOKEN - no/invalid bearer.\n- 403 ADMIN_REQUIRED - non-admin caller."
+          }
+        },
+        {
+          "name": "GET /users/{user_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "users", "{{user_id}}"]
+            },
+            "description": "Return one user.\n\nA non-admin caller can only fetch their own record; requests for any other id return **404 USER_NOT_FOUND** (not 403) to prevent id enumeration."
+          }
+        },
+        {
+          "name": "PATCH /users/{user_id}",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "users", "{{user_id}}"]
+            },
+            "description": "Partial update.\n\n- Self may update own full_name.\n- Admin may update anyone's full_name, is_active, is_admin.\n- Non-admin probing another user's id returns 404 (id enumeration guard).\n- Non-admin setting is_active or is_admin returns 403 ADMIN_REQUIRED."
+          }
+        },
+        {
+          "name": "DELETE /users/{user_id} (admin only, soft)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "users", "{{user_id}}"]
+            },
+            "description": "Soft-deactivate a user. Returns 204 (idempotent on already-inactive).\n\nErrors:\n- 404 USER_NOT_FOUND\n- 409 CANNOT_DEACTIVATE_SELF - admin tried to deactivate their own account."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Items",
+      "item": [
+        {
+          "name": "POST /items",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "pm.collectionVariables.set('item_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"BOT-1L-001\",\n  \"name\": \"1L Bottle (Round)\",\n  \"type\": \"FINISHED\",\n  \"category\": \"Bottle\",\n  \"unit_of_measure\": \"pcs\",\n  \"unit_price\": \"45.00\",\n  \"stock_quantity\": \"0\",\n  \"reorder_threshold\": \"100\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/items",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "items"]
+            },
+            "description": "Create an item. Returns 201 with a **minimal** envelope (id, sku, name, created_at) - intentional deviation from REST convention; see ItemCreated docstring.\n\nUse GET /items/{id} for the full record with stock figures and computed status.\n\nErrors:\n- 409 DUPLICATE_SKU\n- 422 - Pydantic validation."
+          }
+        },
+        {
+          "name": "GET /items",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/items?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "items"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "type", "value": "FINISHED", "disabled": true },
+                { "key": "category", "value": "Bottle", "disabled": true },
+                { "key": "search", "value": "1L", "disabled": true }
+              ]
+            },
+            "description": "Paginated list, newest first. Filters: type (RAW/FINISHED), category (exact), search (case-insensitive over SKU + name)."
+          }
+        },
+        {
+          "name": "GET /items/{item_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/items/{{item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "items", "{{item_id}}"]
+            },
+            "description": "Return one item with computed `status` (IN_STOCK / LOW_STOCK / NO_STOCK).\n\nErrors:\n- 404 ITEM_NOT_FOUND"
+          }
+        },
+        {
+          "name": "PATCH /items/{item_id}",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"1L Bottle (Round, Revised)\",\n  \"reorder_threshold\": \"150\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/items/{{item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "items", "{{item_id}}"]
+            },
+            "description": "Partial update. **sku**, **type**, and **stock_quantity** are NOT patchable here - stock changes go through the stock-movement ledger (Phase 6+)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "POST /customers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "pm.collectionVariables.set('customer_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Acme Distributors Pvt Ltd\",\n  \"contact_person\": \"Anita Sharma\",\n  \"phone\": \"+91 9876543210\",\n  \"email\": \"ops@acme.example.com\",\n  \"is_privileged\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/customers",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "customers"]
+            },
+            "description": "Create a customer. Returns 409 DUPLICATE_CUSTOMER if customer_code or gstin collides."
+          }
+        },
+        {
+          "name": "GET /customers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/customers?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "customers"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "search", "value": "acme", "disabled": true },
+                { "key": "is_privileged", "value": "true", "disabled": true },
+                { "key": "is_active", "value": "true", "disabled": true }
+              ]
+            },
+            "description": "Paginated list with case-insensitive search over company_name and customer_code."
+          }
+        },
+        {
+          "name": "GET /customers/{customer_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/customers/{{customer_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "customers", "{{customer_id}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /customers/{customer_id}",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_person\": \"Anita Sharma (CEO)\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/customers/{{customer_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "customers", "{{customer_id}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /customers/{customer_id} (admin only, soft)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/customers/{{customer_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "customers", "{{customer_id}}"]
+            },
+            "description": "Soft-deactivate (is_active=false). 204, idempotent. Hard delete unsupported - SOs reference customers via FK RESTRICT."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vendors",
+      "item": [
+        {
+          "name": "POST /vendors",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "pm.collectionVariables.set('vendor_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vendor_name\": \"Polymer Suppliers Ltd\",\n  \"contact_person\": \"Rakesh Iyer\",\n  \"phone\": \"+91 9123456780\",\n  \"email\": \"sales@polymer.example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors"]
+            }
+          }
+        },
+        {
+          "name": "GET /vendors",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "search", "value": "polymer", "disabled": true },
+                { "key": "is_active", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /vendors/{vendor_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /vendors/{vendor_id}",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_person\": \"Rakesh Iyer (Head of Sales)\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /vendors/{vendor_id} (admin only, soft)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vendor terms",
+      "item": [
+        {
+          "name": "POST /vendors/{vendor_id}/terms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "pm.collectionVariables.set('term_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_id\": \"{{item_id}}\",\n  \"rate\": \"150.00\",\n  \"discount_percent\": \"5.00\",\n  \"effective_from\": \"2026-01-01\",\n  \"effective_to\": \"2026-12-31\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}/terms",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}", "terms"]
+            },
+            "description": "Create a pricing term. Returns 404 on missing vendor/item, 409 OVERLAPPING_TERMS if an active term already covers any part of the date range."
+          }
+        },
+        {
+          "name": "GET /vendors/{vendor_id}/terms",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}/terms?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}", "terms"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "item_id", "value": "{{item_id}}", "disabled": true },
+                { "key": "active_only", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /vendors/{vendor_id}/terms/{term_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}/terms/{{term_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}", "terms", "{{term_id}}"]
+            },
+            "description": "404 TERM_NOT_FOUND when the term doesn't exist OR belongs to a different vendor (cross-vendor probing guard)."
+          }
+        },
+        {
+          "name": "PATCH /vendors/{vendor_id}/terms/{term_id}",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rate\": \"160.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}/terms/{{term_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}", "terms", "{{term_id}}"]
+            },
+            "description": "Re-checks the overlap invariant against the post-update date range."
+          }
+        },
+        {
+          "name": "DELETE /vendors/{vendor_id}/terms/{term_id} (soft)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/vendors/{{vendor_id}}/terms/{{term_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "vendors", "{{vendor_id}}", "terms", "{{term_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stock movements",
+      "item": [
+        {
+          "name": "GET /stock-movements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/stock-movements?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "stock-movements"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "item_id", "value": "{{item_id}}", "disabled": true },
+                { "key": "direction", "value": "IN", "disabled": true },
+                { "key": "reason", "value": "PURCHASE", "disabled": true },
+                { "key": "date_from", "value": "2026-01-01", "disabled": true },
+                { "key": "date_to", "value": "2026-12-31", "disabled": true }
+              ]
+            },
+            "description": "Read the append-only audit ledger. Filters: item_id, direction (IN/OUT), reason (PURCHASE/SALE/ADJUSTMENT), date_from/date_to (inclusive on both ends).\n\nThe ledger is **append-only** - there is no PATCH or DELETE on movements, ever."
+          }
+        },
+        {
+          "name": "POST /stock-movements/adjustments",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_id\": \"{{item_id}}\",\n  \"direction\": \"IN\",\n  \"quantity\": \"25\",\n  \"remarks\": \"Recount correction - line B\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/stock-movements/adjustments",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "stock-movements", "adjustments"]
+            },
+            "description": "Manual adjustment. `remarks` is required - it's the accountability gate.\n\nErrors:\n- 404 ITEM_NOT_FOUND\n- 409 INSUFFICIENT_STOCK - OUT adjustment would push stock below zero.\n- 422 - Pydantic validation."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Purchase Orders",
+      "item": [
+        {
+          "name": "POST /purchase-orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "pm.collectionVariables.set('po_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vendor_id\": \"{{vendor_id}}\",\n  \"expected_delivery_date\": \"2026-07-15\",\n  \"notes\": \"Initial stock-up\",\n  \"items\": [\n    {\n      \"item_id\": \"{{item_id}}\",\n      \"quantity\": \"100\",\n      \"unit_price\": \"45.00\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/purchase-orders",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "purchase-orders"]
+            },
+            "description": "Create a DRAFT purchase order.\n\nPricing: if `unit_price` is omitted on a line, the service looks up the most recent active vendor_item_term and uses `rate * (1 - discount_percent/100)` quantized to 2 dp.\n\nErrors:\n- 404 VENDOR_NOT_FOUND / ITEM_NOT_FOUND (also for inactive)\n- 409 DUPLICATE_LINE_ITEM\n- 422 PRICE_UNAVAILABLE (no explicit price and no vendor term)"
+          }
+        },
+        {
+          "name": "GET /purchase-orders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/purchase-orders?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "purchase-orders"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "vendor_id", "value": "{{vendor_id}}", "disabled": true },
+                { "key": "status", "value": "DRAFT", "disabled": true },
+                { "key": "date_from", "value": "2026-01-01", "disabled": true },
+                { "key": "date_to", "value": "2026-12-31", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /purchase-orders/{po_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/purchase-orders/{{po_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "purchase-orders", "{{po_id}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /purchase-orders/{po_id}/receive",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/purchase-orders/{{po_id}}/receive",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "purchase-orders", "{{po_id}}", "receive"]
+            },
+            "description": "Receive the PO - transactionally:\n1. Increments items.stock_quantity for each line\n2. Inserts one stock_movements row per line (IN, PURCHASE)\n3. Flips status to RECEIVED, stamps received_date=today\n\nErrors:\n- 404 PURCHASE_ORDER_NOT_FOUND\n- 409 PO_NOT_DRAFT - already received (state-boundary idempotency)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales Orders",
+      "item": [
+        {
+          "name": "POST /sales-orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "pm.collectionVariables.set('so_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"expected_delivery_date\": \"2026-07-20\",\n  \"notes\": \"Trial dispatch\",\n  \"items\": [\n    {\n      \"item_id\": \"{{item_id}}\",\n      \"quantity\": \"5\",\n      \"unit_price\": \"60.00\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/sales-orders",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "sales-orders"]
+            },
+            "description": "Create a DRAFT sales order.\n\nPricing: if `unit_price` is omitted on a line, the service uses the item's catalog `unit_price` (the list price). Phase 1 has no per-customer pricing table.\n\nNo stock pre-check at create time - that's enforced at ship.\n\nErrors:\n- 404 CUSTOMER_NOT_FOUND / ITEM_NOT_FOUND (also for inactive)\n- 409 DUPLICATE_LINE_ITEM"
+          }
+        },
+        {
+          "name": "GET /sales-orders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/sales-orders?limit=25&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "sales-orders"],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "customer_id", "value": "{{customer_id}}", "disabled": true },
+                { "key": "status", "value": "DRAFT", "disabled": true },
+                { "key": "date_from", "value": "2026-01-01", "disabled": true },
+                { "key": "date_to", "value": "2026-12-31", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /sales-orders/{so_id}",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/sales-orders/{{so_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "sales-orders", "{{so_id}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /sales-orders/{so_id}/ship",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/sales-orders/{{so_id}}/ship",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "sales-orders", "{{so_id}}", "ship"]
+            },
+            "description": "Ship the SO - transactionally:\n1. Decrements items.stock_quantity for each line\n2. Inserts one stock_movements row per line (OUT, SALE)\n3. Flips status to SHIPPED, stamps shipped_date=today\n\nErrors:\n- 404 SALES_ORDER_NOT_FOUND\n- 409 SO_NOT_DRAFT - already shipped (state-boundary idempotency)\n- 409 INSUFFICIENT_STOCK - a line would push stock below zero. **Entire ship is rolled back** - no partial stock or ledger."
+          }
+        }
+      ]
+    }
+  ]
+}

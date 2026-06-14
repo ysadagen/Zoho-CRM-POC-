@@ -1,0 +1,9 @@
+/* Brand fonts.
+ * - Cabin Sketch: logo only (sidebar brand, login brand panel, favicon).
+ * - Croissant One: titles, page headers, card section headers.
+ * - Inter: body, UI text, data, numbers.
+ *
+ * Loaded from Google Fonts with `display=swap` so the page renders text
+ * immediately with the fallback then upgrades — no layout shift.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Cabin+Sketch:wght@400;700&family=Croissant+One&family=Inter:wght@300;400;500;600;700&display=swap');
