@@ -10,10 +10,12 @@ dependencies = [
     "email-validator>=2.3.0",
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
+    "openpyxl>=3.1.5",
     "pwdlib[argon2]>=0.2.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.20",
     "sqlalchemy[asyncio]>=2.0.50",
     "structlog>=25.5.0",
     "uvicorn>=0.48.0",
@@ -25,6 +27,7 @@ dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.14",
+    "types-openpyxl>=3.1.5.20260518",
 ]
 
 
