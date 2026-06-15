@@ -48,3 +48,74 @@ export const SalesOrderStatus = {
   SHIPPED: 'SHIPPED',
 } as const;
 export type SalesOrderStatus = (typeof SalesOrderStatus)[keyof typeof SalesOrderStatus];
+
+/* ============================================================
+ *  Pharma enums (Backend_Reference §7 — "Enum types (pharma)")
+ * ============================================================ */
+
+/** Required storage environment — a product-level property (on `items`). */
+export const StorageCondition = {
+  AMBIENT: 'AMBIENT',
+  COLD_CHAIN_2_8: 'COLD_CHAIN_2_8',
+  FROZEN: 'FROZEN',
+  CONTROLLED: 'CONTROLLED',
+} as const;
+export type StorageCondition = (typeof StorageCondition)[keyof typeof StorageCondition];
+
+/** RAW-material classification (`raw_item_details`). */
+export const MaterialClassification = {
+  API: 'API',
+  EXCIPIENT: 'EXCIPIENT',
+  SOLVENT: 'SOLVENT',
+  REAGENT: 'REAGENT',
+  PACKAGING: 'PACKAGING',
+} as const;
+export type MaterialClassification =
+  (typeof MaterialClassification)[keyof typeof MaterialClassification];
+
+/** Pharmacopoeia standard the raw material conforms to (`raw_item_details`). */
+export const Pharmacopoeia = {
+  IP: 'IP',
+  BP: 'BP',
+  USP: 'USP',
+  EP: 'EP',
+  JP: 'JP',
+  NONE: 'NONE',
+} as const;
+export type Pharmacopoeia = (typeof Pharmacopoeia)[keyof typeof Pharmacopoeia];
+
+/** Dosage form of a finished product (`finished_item_details`). */
+export const DosageForm = {
+  TABLET: 'TABLET',
+  CAPSULE: 'CAPSULE',
+  SYRUP: 'SYRUP',
+  SUSPENSION: 'SUSPENSION',
+  INJECTION: 'INJECTION',
+  OINTMENT: 'OINTMENT',
+  CREAM: 'CREAM',
+  GEL: 'GEL',
+  DROPS: 'DROPS',
+  POWDER: 'POWDER',
+  INHALER: 'INHALER',
+  OTHER: 'OTHER',
+} as const;
+export type DosageForm = (typeof DosageForm)[keyof typeof DosageForm];
+
+/** Regulatory schedule (controlled-substance class) (`finished_item_details`). */
+export const DrugSchedule = {
+  NONE: 'NONE',
+  H: 'H',
+  H1: 'H1',
+  X: 'X',
+} as const;
+export type DrugSchedule = (typeof DrugSchedule)[keyof typeof DrugSchedule];
+
+/** QC lifecycle state of a lot (`batches`). */
+export const BatchStatus = {
+  QUARANTINE: 'QUARANTINE',
+  RELEASED: 'RELEASED',
+  EXPIRED: 'EXPIRED',
+  REJECTED: 'REJECTED',
+  RECALLED: 'RECALLED',
+} as const;
+export type BatchStatus = (typeof BatchStatus)[keyof typeof BatchStatus];

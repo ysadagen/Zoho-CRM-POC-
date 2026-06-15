@@ -10,7 +10,7 @@ import type { StockMovement } from '@/types/api.types';
 
 import { directionBadge, movementReference, reasonLabel } from '../sm.transform';
 
-const COL_COUNT = 8;
+const COL_COUNT = 9;
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'];
 const REF_ROUTE = {
   'purchase-order': routes.purchaseOrders,
@@ -23,6 +23,8 @@ export interface StockMovementsTableProps {
   itemName: (itemId: string) => string;
   /** Resolves the customer/vendor behind a movement (or an em dash). */
   party: (movement: StockMovement) => string;
+  /** Resolves the lot (batch number) a movement touched (or an em dash). */
+  lot: (movement: StockMovement) => string;
   onAdjust: () => void;
 }
 
@@ -32,6 +34,7 @@ export function StockMovementsTable({
   loading,
   itemName,
   party,
+  lot,
   onAdjust,
 }: StockMovementsTableProps): JSX.Element {
   return (
@@ -41,6 +44,7 @@ export function StockMovementsTable({
           <tr>
             <th>Time</th>
             <th>Item</th>
+            <th>Lot</th>
             <th>Direction</th>
             <th>Reason</th>
             <th>Customer / Vendor</th>
@@ -89,6 +93,7 @@ export function StockMovementsTable({
                       {itemName(m.item_id)}
                     </Link>
                   </td>
+                  <td className="mono muted">{lot(m)}</td>
                   <td>
                     <Badge variant={dir.variant} dot>
                       {dir.label}

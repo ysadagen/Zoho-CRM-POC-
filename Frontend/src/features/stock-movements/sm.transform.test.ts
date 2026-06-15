@@ -29,6 +29,7 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     stock_after: '10',
     reference_type: null,
     reference_id: null,
+    batch_id: null,
     remarks: 'Recount correction',
     created_by_user_id: 'u1',
     created_at: '2026-05-01T10:00:00Z',

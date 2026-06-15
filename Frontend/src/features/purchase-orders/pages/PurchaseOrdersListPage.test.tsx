@@ -73,6 +73,7 @@ describe('PurchaseOrdersListPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
     expect(await screen.findByRole('dialog', { name: 'Receive PO-202605-000001' })).toBeInTheDocument();
-    expect(await screen.findByText('+100 kg Raw Steel')).toBeInTheDocument();
+    // The receive modal now collects per-line lot details.
+    expect(await screen.findByLabelText(/Batch number/)).toBeInTheDocument();
   });
 });

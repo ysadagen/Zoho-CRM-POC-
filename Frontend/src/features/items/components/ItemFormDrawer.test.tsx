@@ -27,6 +27,10 @@ const EXISTING: Item = {
   stock_quantity: '500',
   reorder_threshold: '100',
   unit_price: '45',
+  storage_condition: null,
+  shelf_life_days: null,
+  raw_detail: null,
+  finished_detail: null,
   status: 'IN_STOCK',
   is_active: true,
   created_at: '2026-01-01T00:00:00Z',
@@ -66,6 +70,47 @@ describe('ItemFormDrawer — create', () => {
       unit_price: '45',
     });
     expect(await screen.findByText('1L Bottle created.')).toBeInTheDocument();
+  });
+
+  it('reveals finished-product fields on type change and sends the detail block', async () => {
+    let body: unknown;
+    server.use(
+      http.post(`${BASE}/items`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          { id: 'f1', sku: 'PCM-500', name: 'Paracetamol 500', created_at: 'now' },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ItemFormDrawer mode="create" onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    // RAW by default — finished fields are hidden until the type flips.
+    expect(screen.queryByLabelText('Dosage form')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Type'), 'FINISHED');
+    expect(screen.getByLabelText('Dosage form')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('SKU'), 'PCM-500');
+    await user.type(screen.getByLabelText('Name'), 'Paracetamol 500');
+    await user.type(screen.getByLabelText('Category'), 'Analgesic');
+    await user.type(screen.getByLabelText('Unit price'), '20');
+    await user.selectOptions(screen.getByLabelText('Storage condition'), 'COLD_CHAIN_2_8');
+    await user.type(screen.getByLabelText('Generic name'), 'Paracetamol');
+    await user.selectOptions(screen.getByLabelText('Dosage form'), 'TABLET');
+    await user.click(screen.getByLabelText('Prescription required'));
+    await user.click(screen.getByRole('button', { name: 'Create item' }));
+
+    await waitFor(() => expect(body).toBeTruthy());
+    expect(body).toMatchObject({
+      type: 'FINISHED',
+      storage_condition: 'COLD_CHAIN_2_8',
+      finished_detail: {
+        generic_name: 'Paracetamol',
+        dosage_form: 'TABLET',
+        is_prescription_required: true,
+      },
+    });
   });
 
   it('blocks submit and shows messages when required fields are empty', async () => {

@@ -9,6 +9,7 @@ export const routes = {
   purchaseOrders: '/purchase-orders',
   customers: '/customers',
   vendors: '/vendors',
+  batches: '/batches',
   stockMovements: '/stock-movements',
   settings: '/settings',
   login: '/login',

@@ -29,7 +29,46 @@ const ITEM = {
   stock_quantity: '40',
   reorder_threshold: '100',
   unit_price: '5',
+  storage_condition: 'COLD_CHAIN_2_8',
+  shelf_life_days: 365,
+  raw_detail: { material_classification: 'API', pharmacopoeia: 'IP', is_hazardous: true },
+  finished_detail: null,
   status: 'LOW_STOCK',
+  is_active: true,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-05-01T00:00:00Z',
+};
+
+const FINISHED_ITEM = {
+  id: 'f1',
+  sku: 'PCM-500',
+  name: 'Paracetamol 500',
+  description: null,
+  type: 'FINISHED',
+  category: 'Analgesic',
+  unit_of_measure: 'strip',
+  stock_quantity: '200',
+  reorder_threshold: '50',
+  unit_price: '20',
+  storage_condition: 'AMBIENT',
+  shelf_life_days: 730,
+  raw_detail: null,
+  finished_detail: {
+    generic_name: 'Paracetamol',
+    brand_name: 'Calpol',
+    strength: '500 mg',
+    dosage_form: 'TABLET',
+    pack_size: '10x10',
+    ingredients: 'Paracetamol IP 500mg',
+    container_specification: 'Blister',
+    selling_price: '18.00',
+    license_number: 'LIC-1',
+    registration_code: 'REG-1',
+    mrp: '25.00',
+    drug_schedule: 'H',
+    is_prescription_required: true,
+  },
+  status: 'IN_STOCK',
   is_active: true,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-05-01T00:00:00Z',
@@ -74,6 +113,27 @@ describe('ItemDetailPage', () => {
     expect(screen.getByText('Total outbound')).toBeInTheDocument();
     // Overview master field (unique to the overview grid).
     expect(screen.getByText('Default unit price')).toBeInTheDocument();
+    // Pharma: common fields + the RAW detail block render with human labels.
+    expect(screen.getByText('Raw material details')).toBeInTheDocument();
+    expect(screen.getByText('Active (API)')).toBeInTheDocument();
+    expect(screen.getByText('Cold chain (2–8°C)')).toBeInTheDocument();
+  });
+
+  it('renders the finished-product detail block with human labels', async () => {
+    server.use(
+      http.get(`${BASE}/items/f1`, () => HttpResponse.json(FINISHED_ITEM)),
+      http.get(`${BASE}/stock-movements`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0 }),
+      ),
+    );
+    seedSession();
+    renderWithProviders(<AppRouter />, { route: '/items/f1' });
+
+    expect(await screen.findByRole('heading', { name: 'Paracetamol 500' })).toBeInTheDocument();
+    expect(screen.getByText('Finished product details')).toBeInTheDocument();
+    expect(screen.getByText('Tablet')).toBeInTheDocument();
+    expect(screen.getByText('Schedule H')).toBeInTheDocument();
+    expect(screen.getByText('Required')).toBeInTheDocument();
   });
 
   it('switches to the movement-history tab', async () => {

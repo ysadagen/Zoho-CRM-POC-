@@ -19,6 +19,7 @@ import { PurchaseOrdersListPage } from '@/features/purchase-orders/pages/Purchas
 import { SalesOrderCreatePage } from '@/features/sales-orders/pages/SalesOrderCreatePage';
 import { SalesOrderDetailPage } from '@/features/sales-orders/pages/SalesOrderDetailPage';
 import { SalesOrdersListPage } from '@/features/sales-orders/pages/SalesOrdersListPage';
+import { BatchesListPage } from '@/features/batches/pages/BatchesListPage';
 import { StockMovementsListPage } from '@/features/stock-movements/pages/StockMovementsListPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 
@@ -52,6 +53,7 @@ export function AppRouter(): JSX.Element {
           <Route path={routes.salesOrders} element={<SalesOrdersListPage />} />
           <Route path={`${routes.salesOrders}/new`} element={<SalesOrderCreatePage />} />
           <Route path={`${routes.salesOrders}/:id`} element={<SalesOrderDetailPage />} />
+          <Route path={routes.batches} element={<BatchesListPage />} />
           <Route path={routes.stockMovements} element={<StockMovementsListPage />} />
           <Route path={routes.settings} element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />

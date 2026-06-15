@@ -140,7 +140,7 @@ Frontend/
     │   ├── toast/                   # ToastHost + useToast
     │   └── errors/                  # ErrorBoundary + PageError
     ├── features/                    # one folder per domain: items, customers, vendors,
-    │   │                            #   purchase-orders, sales-orders, stock-movements, …
+    │   │                            #   purchase-orders, sales-orders, batches, stock-movements, …
     ├── hooks/                       # cross-feature hooks (useDebounce, usePagination, …)
     └── types/                       # hand-typed mirrors of Backend schemas + enums
 ```
@@ -318,10 +318,15 @@ verify` passes) and ends with copy-paste verification steps in `execution.md`.
 | 9 | Stock Movements (read-only ledger + manual adjustment) | ✅ shipped |
 | 10 | Settings (profile + edit name) | ✅ shipped |
 | 11 | Polish (error boundary, README, review) | ✅ shipped |
+| FE-0…4 | **Pharma alignment** — item raw/finished detail blocks + common-pharma fields, **Batches** (lots) section, PO receive-into-lots, lot column on the ledger | ✅ shipped |
 
-> All eight domains are wired to the live Backend with full create/detail/action
-> flows, **272+ tests** and coverage held at **≥ 80 % global / 95 %+ `lib/`**.
-> See `execution.md` for the per-phase delivery log and verification steps.
+> All domains are wired to the live Backend with full create/detail/action
+> flows, **306 tests** and coverage held at **≥ 80 % global / 95 %+ `lib/`**.
+> The **pharmaceutical-inventory** model is surfaced end-to-end: items carry
+> raw/finished pharma attributes, lots (`Batches`) are created (opening-balance +
+> PO receive) and tracked by expiry/status, and every stock movement is
+> lot-linked. See `execution.md` (the "Pharma alignment" section) for the
+> per-phase delivery log + verification steps.
 
 ---
 
