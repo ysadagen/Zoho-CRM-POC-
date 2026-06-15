@@ -58,12 +58,15 @@ async def list_items(
     type: Annotated[ItemType | None, Query()] = None,
     category: Annotated[str | None, Query(max_length=64)] = None,
     search: Annotated[str | None, Query(max_length=255)] = None,
+    include_inactive: Annotated[bool, Query()] = False,
 ) -> ItemList:
     """Return a page of items, newest first.
 
     Filters compose: ``type``, ``category``, and a case-insensitive
-    ``search`` over SKU and name. ``total`` is the count after filters
-    but before pagination so the frontend can render pager controls.
+    ``search`` over SKU and name. Soft-deleted (inactive) items are
+    excluded unless ``include_inactive=true``. ``total`` is the count
+    after filters but before pagination so the frontend can render
+    pager controls.
     """
     items, total = await ItemService(session).list_(
         limit=limit,
@@ -71,6 +74,7 @@ async def list_items(
         item_type=type,
         category=category,
         search=search,
+        include_inactive=include_inactive,
     )
     return ItemList(
         items=[ItemRead.model_validate(i) for i in items],
@@ -114,3 +118,23 @@ async def update_item(
     """
     item = await ItemService(session).update(item_id, payload, actor_id=current_user.id)
     return ItemRead.model_validate(item)
+
+
+@router.delete(
+    "/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete (deactivate) an item",
+)
+async def delete_item(
+    item_id: uuid.UUID,
+    session: _Session,
+    current_user: _CurrentUser,
+) -> None:
+    """Deactivate an item (``is_active = false``).
+
+    This is a **soft** delete — the row is never removed, so the audit
+    trail (movements, POs, SOs, lots that reference it) stays intact. The
+    item drops out of the default list and can't be added to new orders.
+    Returns 204; 404 if the id is unknown.
+    """
+    await ItemService(session).soft_delete(item_id, actor_id=current_user.id)

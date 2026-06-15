@@ -35,6 +35,10 @@ class AdjustmentCreate(BaseModel):
     ``remarks`` is **required** — it's the accountability gate for a
     write that has no other paper trail (no PO, no SO). Empty or
     whitespace-only remarks fail with 422.
+
+    ``batch_id`` is optional (#8). When given, the adjustment also moves
+    that lot's quantity by the same amount, keeping the lot figures in
+    step with the item total; when omitted, only the item aggregate moves.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -43,6 +47,7 @@ class AdjustmentCreate(BaseModel):
     direction: MovementDirection
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     remarks: str = Field(min_length=1, max_length=500)
+    batch_id: uuid.UUID | None = None
 
 
 class StockMovementRead(BaseModel):

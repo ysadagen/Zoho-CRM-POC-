@@ -14,6 +14,8 @@ const lineSchema = z.object({
     .string()
     .trim()
     .refine((v) => v === '' || DECIMAL_RE.test(v), 'Price must be a non-negative number'),
+  // Optional chosen lot (#9) — blank means ship First-Expiry-First-Out.
+  batch_id: z.string(),
 });
 
 export const soCreateSchema = z.object({
@@ -26,7 +28,7 @@ export const soCreateSchema = z.object({
 export type SoFormValues = z.infer<typeof soCreateSchema>;
 export type SoLineValues = z.infer<typeof lineSchema>;
 
-export const EMPTY_LINE: SoLineValues = { item_id: '', quantity: '', unit_price: '' };
+export const EMPTY_LINE: SoLineValues = { item_id: '', quantity: '', unit_price: '', batch_id: '' };
 
 export const EMPTY_SO: SoFormValues = {
   customer_id: '',

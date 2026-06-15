@@ -1,21 +1,24 @@
 import { useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { routes } from '@/app/routes';
 import { PageError } from '@/components/errors/PageError';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { useToast } from '@/components/toast/useToast';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Tabs } from '@/components/ui/Tabs';
+import { useApiError } from '@/hooks/useApiError';
 import { formatCurrency, formatDate, formatQuantity, formatRelative } from '@/lib/format';
 import type { FinishedItemDetail, Item, RawItemDetail } from '@/types/api.types';
 
 import { ItemStatusBadge, ItemTypeBadge } from '../components/ItemBadges';
 import { ItemFormDrawer } from '../components/ItemFormDrawer';
 import { ItemMovementsTab } from '../components/ItemMovementsTab';
-import { useItem, useItemMovements } from '../hooks/useItems';
-import { summariseMovements } from '../item.transform';
+import { useDeleteItem, useItem, useItemMovements } from '../hooks/useItems';
+import { parseIngredients, summariseMovements } from '../item.transform';
 import {
   dosageFormLabel,
   drugScheduleLabel,
@@ -112,10 +115,36 @@ function FinishedDetail({ detail }: { detail: FinishedItemDetail }): JSX.Element
         <Detail label="License number" value={detail.license_number ?? '—'} />
         <Detail label="Registration code" value={detail.registration_code ?? '—'} />
         <div className="full">
-          <Detail label="Ingredients" value={detail.ingredients ?? '—'} />
+          <Ingredients raw={detail.ingredients} />
         </div>
       </div>
     </>
+  );
+}
+
+function Ingredients({ raw }: { raw: string | null }): JSX.Element {
+  const lines = parseIngredients(raw);
+  if (!lines) {
+    return <Detail label="Ingredients" value={raw ?? '—'} />;
+  }
+  return (
+    <div className="label-pair">
+      <span className="l">Ingredients</span>
+      <span className="v">
+        {lines.map((ing) => (
+          <div key={ing.name}>
+            {ing.name}
+            {ing.qty ? (
+              <span className="muted">
+                {' — '}
+                {ing.qty}
+                {ing.unit ? ` ${ing.unit}` : ''}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </span>
+    </div>
   );
 }
 
@@ -160,10 +189,15 @@ export function ItemDetailPage(): JSX.Element {
   const back = (state as BackNav | null) ?? null;
   const backTo = back?.from ?? routes.items;
   const backLabel = back?.fromLabel ?? 'Items';
+  const navigate = useNavigate();
+  const toast = useToast();
+  const reportApiError = useApiError();
   const itemQuery = useItem(id);
   const movementsQuery = useItemMovements(id);
+  const deleteMut = useDeleteItem();
   const [tab, setTab] = useState<DetailTab>('overview');
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (itemQuery.isPending) return <DetailSkeleton />;
   if (itemQuery.isError || !itemQuery.data) {
@@ -174,6 +208,16 @@ export function ItemDetailPage(): JSX.Element {
   const unit = item.unit_of_measure;
   const movements = movementsQuery.data?.items ?? [];
   const summary = summariseMovements(movements);
+
+  const onConfirmDelete = (): void => {
+    deleteMut.mutate(item.id, {
+      onSuccess: () => {
+        toast.success(`${item.name} deactivated.`);
+        navigate(backTo);
+      },
+      onError: (error) => reportApiError(error, { scope: 'items.delete' }),
+    });
+  };
 
   return (
     <>
@@ -194,6 +238,11 @@ export function ItemDetailPage(): JSX.Element {
             <Button variant="pri" onClick={() => setEditOpen(true)}>
               Edit
             </Button>
+            {item.is_active && (
+              <Button variant="dng" onClick={() => setConfirmDelete(true)}>
+                Deactivate
+              </Button>
+            )}
           </>
         }
       />
@@ -221,6 +270,28 @@ export function ItemDetailPage(): JSX.Element {
       )}
 
       {editOpen && <ItemFormDrawer mode="edit" item={item} onClose={() => setEditOpen(false)} />}
+
+      {confirmDelete && (
+        <Modal
+          open
+          onClose={() => setConfirmDelete(false)}
+          title={`Deactivate ${item.name}?`}
+          sub="The item is hidden from the catalogue and can't be added to new orders. Its history (movements, lots, orders) is preserved and it can be reactivated later."
+          tone="danger"
+          footer={
+            <>
+              <Button variant="sec" onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </Button>
+              <Button variant="dng" onClick={onConfirmDelete} loading={deleteMut.isPending}>
+                Deactivate
+              </Button>
+            </>
+          }
+        >
+          <p className="text-muted">This is a soft delete — nothing is permanently removed.</p>
+        </Modal>
+      )}
     </>
   );
 }

@@ -143,6 +143,64 @@ export function toUpdatePayload(values: ItemEditValues, type: ItemType): ItemUpd
   return payload;
 }
 
+export interface IngredientLine {
+  name: string;
+  qty?: string;
+  unit?: string;
+}
+
+/**
+ * Parse the finished-product `ingredients` field for readable display.
+ *
+ * The Backend stores it as free text that operators fill with a JSON map/array
+ * of `{ name, qty, unit }`. Returns the parsed lines, or `null` when it isn't
+ * structured JSON (the caller then shows the raw text verbatim).
+ */
+export function parseIngredients(raw: string | null): IngredientLine[] | null {
+  if (!raw || !raw.trim()) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const values =
+    Array.isArray(data) ? data : data && typeof data === 'object' ? Object.values(data) : null;
+  if (!values) return null;
+
+  const lines: IngredientLine[] = [];
+  for (const entry of values) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const name = typeof record.name === 'string' ? record.name : null;
+    if (!name) continue;
+    lines.push({
+      name,
+      qty: record.qty != null ? String(record.qty) : undefined,
+      unit: typeof record.unit === 'string' ? record.unit : undefined,
+    });
+  }
+  return lines.length > 0 ? lines : null;
+}
+
+/**
+ * Serialize structured ingredient rows back to the JSON string the Backend
+ * stores in `finished_detail.ingredients` (#2). Rows without a name are
+ * dropped; an empty list serializes to `''` (the "not set" value). The output
+ * round-trips through {@link parseIngredients}.
+ */
+export function serializeIngredients(lines: IngredientLine[]): string {
+  const clean = lines
+    .map((l) => ({ name: l.name.trim(), qty: (l.qty ?? '').trim(), unit: (l.unit ?? '').trim() }))
+    .filter((l) => l.name)
+    .map((l) => ({
+      name: l.name,
+      ...(l.qty ? { qty: l.qty } : {}),
+      ...(l.unit ? { unit: l.unit } : {}),
+    }));
+  return clean.length > 0 ? JSON.stringify(clean) : '';
+}
+
 function toFormUnit(unit: string): ItemEditValues['unit_of_measure'] {
   // The form select only offers ITEM_UNITS; fall back to the first if the
   // Backend ever returns an unknown unit (POC data uses the known set).

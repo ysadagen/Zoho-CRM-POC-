@@ -6,6 +6,8 @@ import {
   itemStatusBadge,
   itemToEditValues,
   itemTypeBadge,
+  parseIngredients,
+  serializeIngredients,
   summariseMovements,
   toCreatePayload,
   toUpdatePayload,
@@ -263,5 +265,53 @@ describe('itemToEditValues', () => {
 
   it('falls back to a known unit when the Backend unit is unfamiliar', () => {
     expect(itemToEditValues(item({ unit_of_measure: 'dozen' })).unit_of_measure).toBe('kg');
+  });
+});
+
+describe('parseIngredients', () => {
+  it('parses a JSON object keyed by codes into readable lines', () => {
+    const raw =
+      '{"RM020":{"name":"Polypropylene","qty":2.5,"unit":"g"},"RM021":{"name":"Needle","qty":1,"unit":"piece"}}';
+    expect(parseIngredients(raw)).toEqual([
+      { name: 'Polypropylene', qty: '2.5', unit: 'g' },
+      { name: 'Needle', qty: '1', unit: 'piece' },
+    ]);
+  });
+
+  it('parses a JSON array form', () => {
+    expect(parseIngredients('[{"name":"Paracetamol","qty":"500","unit":"mg"}]')).toEqual([
+      { name: 'Paracetamol', qty: '500', unit: 'mg' },
+    ]);
+  });
+
+  it('returns null for blank, non-JSON, or shapeless input (caller shows raw)', () => {
+    expect(parseIngredients(null)).toBeNull();
+    expect(parseIngredients('')).toBeNull();
+    expect(parseIngredients('just a plain sentence')).toBeNull();
+    expect(parseIngredients('{"x":{"qty":1}}')).toBeNull(); // no name → skipped → empty → null
+  });
+});
+
+describe('serializeIngredients', () => {
+  it('serializes named rows to a JSON array, dropping empty qty/unit + nameless rows', () => {
+    const json = serializeIngredients([
+      { name: 'Paracetamol', qty: '500', unit: 'mg' },
+      { name: 'Coating', qty: '', unit: '' },
+      { name: '', qty: '5', unit: 'mg' },
+    ]);
+    expect(JSON.parse(json)).toEqual([
+      { name: 'Paracetamol', qty: '500', unit: 'mg' },
+      { name: 'Coating' },
+    ]);
+  });
+
+  it('round-trips through parseIngredients', () => {
+    const lines = [{ name: 'API', qty: '10', unit: 'g' }];
+    expect(parseIngredients(serializeIngredients(lines))).toEqual(lines);
+  });
+
+  it('returns an empty string when no row has a name', () => {
+    expect(serializeIngredients([{ name: '  ', qty: '1', unit: 'g' }])).toBe('');
+    expect(serializeIngredients([])).toBe('');
   });
 });

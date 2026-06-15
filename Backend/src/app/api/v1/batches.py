@@ -22,7 +22,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.batch import BatchStatus
 from app.models.user import User
-from app.schemas.batch import BatchCreate, BatchList, BatchRead
+from app.schemas.batch import BatchCreate, BatchList, BatchRead, BatchStatusChange
 from app.services.batch_service import BatchService
 
 router = APIRouter(prefix="/batches", tags=["batches"])
@@ -100,3 +100,27 @@ async def get_batch(
 ) -> BatchRead:
     """Return one lot. Returns ``404 BATCH_NOT_FOUND`` if the id is unknown."""
     return BatchRead.model_validate(await BatchService(session).get(batch_id))
+
+
+@router.post(
+    "/{batch_id}/status",
+    response_model=BatchRead,
+    summary="Change a lot's QC status (release / reject / recall)",
+)
+async def change_batch_status(
+    batch_id: uuid.UUID,
+    payload: BatchStatusChange,
+    session: _Session,
+    current_user: _CurrentUser,
+) -> BatchRead:
+    """Transition a lot's QC status.
+
+    Legal moves: QUARANTINE → RELEASED / REJECTED, RELEASED → RECALLED.
+    Returns ``404 BATCH_NOT_FOUND`` for an unknown lot, ``409
+    INVALID_BATCH_TRANSITION`` for an illegal move. REJECTED / RECALLED lots
+    stop being shippable.
+    """
+    batch = await BatchService(session).change_status(
+        batch_id, payload.status, actor_id=current_user.id
+    )
+    return BatchRead.model_validate(batch)

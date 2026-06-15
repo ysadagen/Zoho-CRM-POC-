@@ -151,6 +151,7 @@ class ItemService:
         item_type: ItemType | None = None,
         category: str | None = None,
         search: str | None = None,
+        include_inactive: bool = False,
     ) -> tuple[list[Item], int]:
         return await self._items.list_(
             limit=limit,
@@ -158,7 +159,25 @@ class ItemService:
             item_type=item_type,
             category=category,
             search=search,
+            include_inactive=include_inactive,
         )
+
+    async def soft_delete(self, item_id: uuid.UUID, *, actor_id: uuid.UUID) -> None:
+        """Deactivate an item (soft delete) — sets ``is_active = false``.
+
+        We never hard-delete: items are referenced by movements, POs, SOs and
+        batches (all ``ON DELETE RESTRICT``), and that history must survive.
+        A deactivated item drops out of the default item list and can no
+        longer be added to new orders (create flows reject inactive items),
+        while every past record that points at it stays intact. Idempotent —
+        deactivating an already-inactive item is a no-op. 404 if unknown.
+        """
+        item = await self.get(item_id)
+        if item.is_active:
+            item.is_active = False
+            item.updated_by_user_id = actor_id
+            await self._session.commit()
+        logger.info("item_deactivated", extra={"item_id": str(item.id), "sku": item.sku})
 
     async def update(
         self,

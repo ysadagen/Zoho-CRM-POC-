@@ -259,22 +259,24 @@ class PurchaseOrderService:
         *,
         actor_id: uuid.UUID,
     ) -> PurchaseOrder:
-        """Transition DRAFT → RECEIVED, creating a lot per line.
+        """Transition DRAFT → RECEIVED, creating one or more lots per line.
 
         Behaviour, in this exact order:
 
         1. ``SELECT ... FOR UPDATE`` the PO (idempotency lock).
         2. 404 if missing; 409 ``PO_NOT_DRAFT`` if status != DRAFT.
-        3. Validate the batch entries cover **exactly** the PO's lines
-           (one per line, matched by ``item_id``) → 422 otherwise.
-        4. Pre-check each batch number is free for its item → 409
-           ``DUPLICATE_BATCH`` otherwise.
-        5. For each line (ordered by ``item_id`` for deadlock safety):
-           create a ``batches`` row (quantity = line quantity, cost = line
-           unit price, provenance = this PO + its vendor) and call
-           ``record_movement(IN, PURCHASE, batch_id=<new lot>, ...)`` —
-           which locks the item, bumps ``stock_quantity`` and inserts the
-           ledger row.
+        3. Group the lots by item and resolve each lot's quantity — every
+           PO line must have ≥1 lot, no lot for an off-PO item, and a
+           split line's lot quantities must sum to the line quantity → 422
+           ``RECEIVE_LINES_MISMATCH`` / ``RECEIVE_QUANTITY_MISMATCH``.
+        4. Pre-check each batch number is free for its item and unique
+           within the payload → 409 ``DUPLICATE_BATCH`` otherwise.
+        5. For each line (ordered by ``item_id`` for deadlock safety) and
+           each of its lots: create a ``batches`` row (quantity = the
+           lot's resolved quantity, cost = line unit price, provenance =
+           this PO + its vendor) and call ``record_movement(IN, PURCHASE,
+           batch_id=<new lot>, ...)`` — which locks the item, bumps
+           ``stock_quantity`` and inserts the ledger row.
         6. Update PO header. Single commit. Refresh.
 
         Any failure aborts the whole transaction — no partial stock, no
@@ -292,54 +294,66 @@ class PurchaseOrderService:
                 code="PO_NOT_DRAFT",
             )
 
-        entries = self._batch_entries_by_item(payload, po)
+        lots_by_item = self._lots_by_item(payload, po)
 
-        # Fail fast on a duplicate lot number before writing anything.
+        # Fail fast on a duplicate lot number before writing anything —
+        # both against existing lots and within this payload.
         for line in po.items:
-            entry = entries[line.item_id]
-            existing = await self._batches.get_by_item_and_number(line.item_id, entry.batch_number)
-            if existing is not None:
-                raise ConflictError(
-                    f"Batch '{entry.batch_number}' already exists for item {line.item_id}",
-                    code="DUPLICATE_BATCH",
+            seen: set[str] = set()
+            for entry, _qty in lots_by_item[line.item_id]:
+                if entry.batch_number in seen:
+                    raise ConflictError(
+                        f"Batch '{entry.batch_number}' is listed twice for item {line.item_id}",
+                        code="DUPLICATE_BATCH",
+                    )
+                seen.add(entry.batch_number)
+                existing = await self._batches.get_by_item_and_number(
+                    line.item_id, entry.batch_number
                 )
+                if existing is not None:
+                    raise ConflictError(
+                        f"Batch '{entry.batch_number}' already exists for item {line.item_id}",
+                        code="DUPLICATE_BATCH",
+                    )
 
         # Deterministic lock ordering: two POs that share items will
         # always lock them in the same sequence and cannot deadlock.
         lines_sorted = sorted(po.items, key=lambda li: li.item_id)
         remarks = f"PO {po.po_number}"
         today = date.today()
+        batches_created = 0
         try:
             for line in lines_sorted:
-                entry = entries[line.item_id]
-                batch = await self._batches.add(
-                    Batch(
-                        item_id=line.item_id,
-                        batch_number=entry.batch_number,
-                        expiry_date=entry.expiry_date,
-                        manufacturing_date=entry.manufacturing_date,
-                        storage_location=entry.storage_location,
-                        quantity=line.quantity,
-                        initial_quantity=line.quantity,
-                        unit_cost=line.unit_price,
-                        vendor_id=po.vendor_id,
-                        received_via_po_id=po.id,
-                        batch_received_date=today,
-                        created_by_user_id=actor_id,
-                        updated_by_user_id=actor_id,
+                for entry, qty in lots_by_item[line.item_id]:
+                    batch = await self._batches.add(
+                        Batch(
+                            item_id=line.item_id,
+                            batch_number=entry.batch_number,
+                            expiry_date=entry.expiry_date,
+                            manufacturing_date=entry.manufacturing_date,
+                            storage_location=entry.storage_location,
+                            quantity=qty,
+                            initial_quantity=qty,
+                            unit_cost=line.unit_price,
+                            vendor_id=po.vendor_id,
+                            received_via_po_id=po.id,
+                            batch_received_date=today,
+                            created_by_user_id=actor_id,
+                            updated_by_user_id=actor_id,
+                        )
                     )
-                )
-                await self._movements.record_movement(
-                    item_id=line.item_id,
-                    direction=MovementDirection.IN,
-                    reason=MovementReason.PURCHASE,
-                    quantity=line.quantity,
-                    actor_id=actor_id,
-                    reference_type=REFERENCE_TYPE_PURCHASE_ORDER,
-                    reference_id=po.id,
-                    remarks=remarks,
-                    batch_id=batch.id,
-                )
+                    await self._movements.record_movement(
+                        item_id=line.item_id,
+                        direction=MovementDirection.IN,
+                        reason=MovementReason.PURCHASE,
+                        quantity=qty,
+                        actor_id=actor_id,
+                        reference_type=REFERENCE_TYPE_PURCHASE_ORDER,
+                        reference_id=po.id,
+                        remarks=remarks,
+                        batch_id=batch.id,
+                    )
+                    batches_created += 1
 
             po.status = PurchaseOrderStatus.RECEIVED
             po.received_date = today
@@ -362,40 +376,74 @@ class PurchaseOrderService:
                 "po_id": str(po.id),
                 "po_number": po.po_number,
                 "line_count": len(lines_sorted),
-                "batches_created": len(lines_sorted),
+                "batches_created": batches_created,
                 "actor_id": str(actor_id),
             },
         )
         return po
 
     @staticmethod
-    def _batch_entries_by_item(
+    def _lots_by_item(
         payload: PurchaseOrderReceive,
         po: PurchaseOrder,
-    ) -> dict[uuid.UUID, PurchaseOrderReceiveLine]:
-        """Map each batch entry to its PO line by ``item_id``.
+    ) -> dict[uuid.UUID, list[tuple[PurchaseOrderReceiveLine, Decimal]]]:
+        """Group receive lots by item and resolve each lot's quantity.
 
-        Requires the entries to cover exactly the PO's lines — no missing
-        line, no entry for an item not on the PO, no duplicates. Raises
-        422 ``RECEIVE_LINES_MISMATCH`` otherwise.
+        A PO line may be split across several lots. The rules:
+
+        - Every PO line's item must have **at least one** lot, and there
+          must be no lot for an item not on the PO → 422
+          ``RECEIVE_LINES_MISMATCH`` otherwise.
+        - A line received as a **single** lot may omit ``quantity`` — it
+          takes the whole PO-line quantity (the Phase-1C contract,
+          unchanged).
+        - When a line is **split** across lots (or a single lot states an
+          explicit quantity), every lot must carry a quantity and the
+          quantities must sum to the PO line quantity → 422
+          ``RECEIVE_QUANTITY_MISMATCH`` otherwise.
+
+        Returns, per item, the list of ``(lot, resolved_quantity)`` pairs.
         """
-        entries: dict[uuid.UUID, PurchaseOrderReceiveLine] = {}
+        grouped: dict[uuid.UUID, list[PurchaseOrderReceiveLine]] = {}
         for entry in payload.lines:
-            if entry.item_id in entries:
-                raise ValidationError(
-                    f"Duplicate batch entry for item {entry.item_id}",
-                    code="RECEIVE_LINES_MISMATCH",
-                )
-            entries[entry.item_id] = entry
+            grouped.setdefault(entry.item_id, []).append(entry)
 
-        po_item_ids = {line.item_id for line in po.items}
-        if set(entries) != po_item_ids:
-            missing = po_item_ids - set(entries)
-            extra = set(entries) - po_item_ids
+        po_lines = {line.item_id: line for line in po.items}
+        if set(grouped) != set(po_lines):
+            missing = set(po_lines) - set(grouped)
+            extra = set(grouped) - set(po_lines)
             raise ValidationError(
-                "Receive must provide one batch per PO line "
+                "Receive must provide at least one lot per PO line "
                 f"(missing: {sorted(map(str, missing))}, "
                 f"unexpected: {sorted(map(str, extra))})",
                 code="RECEIVE_LINES_MISMATCH",
             )
-        return entries
+
+        resolved: dict[uuid.UUID, list[tuple[PurchaseOrderReceiveLine, Decimal]]] = {}
+        for item_id, entries in grouped.items():
+            line_qty = po_lines[item_id].quantity
+
+            # Single lot, no explicit quantity → it takes the whole line.
+            if len(entries) == 1 and entries[0].quantity is None:
+                resolved[item_id] = [(entries[0], line_qty)]
+                continue
+
+            lots: list[tuple[PurchaseOrderReceiveLine, Decimal]] = []
+            total = Decimal("0")
+            for entry in entries:
+                if entry.quantity is None:
+                    raise ValidationError(
+                        f"Each lot for item {item_id} must state a quantity "
+                        "when a line is split across multiple lots",
+                        code="RECEIVE_QUANTITY_MISMATCH",
+                    )
+                lots.append((entry, entry.quantity))
+                total += entry.quantity
+            if total != line_qty:
+                raise ValidationError(
+                    f"Lot quantities for item {item_id} sum to {total}, "
+                    f"but the PO line is for {line_qty}",
+                    code="RECEIVE_QUANTITY_MISMATCH",
+                )
+            resolved[item_id] = lots
+        return resolved

@@ -20,7 +20,19 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from app.models.batch import BatchStatus
 
-__all__ = ["BatchCreate", "BatchList", "BatchRead"]
+__all__ = ["BatchCreate", "BatchList", "BatchRead", "BatchStatusChange"]
+
+
+class BatchStatusChange(BaseModel):
+    """Payload for ``POST /batches/{id}/status`` — a QC transition (#7).
+
+    The target ``status``; the service enforces which transitions are legal
+    (QUARANTINE → RELEASED/REJECTED, RELEASED → RECALLED).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: BatchStatus
 
 
 class BatchCreate(BaseModel):

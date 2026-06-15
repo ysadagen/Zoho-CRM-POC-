@@ -19,6 +19,7 @@ import {
   itemEditSchema,
   type ItemCreateValues,
 } from '../item.schema';
+import { IngredientsEditor } from './IngredientsEditor';
 import { itemToEditValues, toCreatePayload, toUpdatePayload } from '../item.transform';
 import {
   DOSAGE_FORM_OPTIONS,
@@ -105,6 +106,7 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
     handleSubmit,
     setError,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<ItemCreateValues>({
     resolver: isCreate
@@ -299,14 +301,13 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
             </div>
             <Field
               label="Ingredients"
-              htmlFor="item-ingredients"
-              hint="List of ingredients"
+              htmlFor="item-ingredient-0"
+              hint="One row per ingredient — name, quantity and unit"
               error={errors.ingredients?.message}
             >
-              <Textarea
-                id="item-ingredients"
-                invalid={!!errors.ingredients}
-                {...register('ingredients')}
+              <IngredientsEditor
+                initialValue={watch('ingredients')}
+                onChange={(json) => setValue('ingredients', json, { shouldDirty: true })}
               />
             </Field>
             {checkRow('is_prescription_required', 'Prescription required')}

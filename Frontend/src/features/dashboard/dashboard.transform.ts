@@ -32,6 +32,7 @@ export interface LowStockVM {
 
 export interface MovementVM {
   id: string;
+  itemId: string;
   time: string;
   item: string;
   badgeVariant: BadgeVariant;
@@ -99,6 +100,7 @@ export function toMovementVM(m: StockMovement, items: Map<string, Item>): Moveme
   const { variant, label } = movementBadge(m);
   return {
     id: m.id,
+    itemId: m.item_id,
     time: formatTime(m.created_at),
     item: item ? item.name : 'Unknown item',
     badgeVariant: variant,

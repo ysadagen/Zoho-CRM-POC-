@@ -65,12 +65,18 @@ class PurchaseOrderCreate(BaseModel):
 
 
 class PurchaseOrderReceiveLine(BaseModel):
-    """Batch (lot) details for one PO line, supplied at receive time.
+    """One lot (batch) received against a PO line, supplied at receive time.
 
     The operator supplies the manufacturer's ``batch_number`` and the
     lot's ``expiry_date`` (required — pharma stock must enter with an
-    expiry). One entry per PO line, matched by ``item_id``. The received
-    quantity and unit cost come from the PO line itself, not from here.
+    expiry). Lots are matched to a PO line by ``item_id``.
+
+    A PO line may be split across **several** lots (different batch
+    numbers / expiries arriving in one shipment). When splitting, every
+    lot must carry an explicit ``quantity`` and the lots' quantities must
+    sum to the PO line quantity. For a line received as a single lot you
+    may omit ``quantity`` — the whole PO-line quantity is used. Unit cost
+    always comes from the PO line, never from here.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -80,6 +86,7 @@ class PurchaseOrderReceiveLine(BaseModel):
     expiry_date: date
     manufacturing_date: date | None = None
     storage_location: str | None = Field(default=None, max_length=120)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
 
     @model_validator(mode="after")
     def _expiry_on_or_after_manufacture(self) -> Self:
@@ -91,8 +98,9 @@ class PurchaseOrderReceiveLine(BaseModel):
 class PurchaseOrderReceive(BaseModel):
     """Payload for ``POST /purchase-orders/{id}/receive``.
 
-    One batch entry per PO line — the service requires the entries to
-    cover exactly the PO's lines (no missing, no extra).
+    A list of lots covering exactly the PO's lines (every line has at
+    least one lot; no lots for an item not on the PO). A line may be
+    split across multiple lots — see :class:`PurchaseOrderReceiveLine`.
     """
 
     model_config = ConfigDict(extra="forbid")

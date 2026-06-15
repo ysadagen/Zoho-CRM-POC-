@@ -42,13 +42,18 @@ class ItemRepository:
         item_type: ItemType | None = None,
         category: str | None = None,
         search: str | None = None,
+        include_inactive: bool = False,
     ) -> tuple[list[Item], int]:
         """Return ``(items_page, total_matching)``.
 
         ``total`` reflects the full count after filters but before
         pagination — that's what the UI needs to render pager controls.
+        Soft-deleted items (``is_active = false``) are excluded unless
+        ``include_inactive`` is set.
         """
         filtered: Select[tuple[Item]] = select(Item)
+        if not include_inactive:
+            filtered = filtered.where(Item.is_active.is_(True))
         if item_type is not None:
             filtered = filtered.where(Item.type == item_type)
         if category is not None:

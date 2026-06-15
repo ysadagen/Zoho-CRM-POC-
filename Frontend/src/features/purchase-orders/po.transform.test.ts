@@ -4,6 +4,7 @@ import type { PurchaseOrder } from '@/types/api.types';
 
 import { EMPTY_PO } from './po.schema';
 import {
+  emptyReceiveLot,
   estimatedTotal,
   lineTotal,
   poStatusBadge,
@@ -68,22 +69,34 @@ describe('receiveDefaults / toReceivePayload', () => {
     ],
   } as PurchaseOrder;
 
-  it('seeds one blank lot row per PO line with item_id prefilled', () => {
+  it('seeds one lot row per PO line, quantity prefilled to the full line qty', () => {
     expect(receiveDefaults(po)).toEqual({
       lines: [
-        { item_id: 'i1', batch_number: '', expiry_date: '', manufacturing_date: '', storage_location: '' },
-        { item_id: 'i2', batch_number: '', expiry_date: '', manufacturing_date: '', storage_location: '' },
+        { item_id: 'i1', batch_number: '', expiry_date: '', quantity: '100', manufacturing_date: '', storage_location: '' },
+        { item_id: 'i2', batch_number: '', expiry_date: '', quantity: '50', manufacturing_date: '', storage_location: '' },
       ],
     });
   });
 
-  it('builds the receive body, dropping blank optionals', () => {
+  it('emptyReceiveLot makes a blank extra lot bound to an item', () => {
+    expect(emptyReceiveLot('i9')).toEqual({
+      item_id: 'i9',
+      batch_number: '',
+      expiry_date: '',
+      quantity: '',
+      manufacturing_date: '',
+      storage_location: '',
+    });
+  });
+
+  it('builds the receive body (with per-lot quantity), dropping blank optionals', () => {
     const payload = toReceivePayload({
       lines: [
         {
           item_id: 'i1',
           batch_number: 'LOT-A',
           expiry_date: '2030-01-01',
+          quantity: '100',
           manufacturing_date: '',
           storage_location: '',
         },
@@ -91,6 +104,7 @@ describe('receiveDefaults / toReceivePayload', () => {
           item_id: 'i2',
           batch_number: 'LOT-B',
           expiry_date: '2031-06-01',
+          quantity: '50',
           manufacturing_date: '2026-06-01',
           storage_location: 'Cold Room A',
         },
@@ -98,15 +112,29 @@ describe('receiveDefaults / toReceivePayload', () => {
     });
     expect(payload).toEqual({
       lines: [
-        { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01' },
+        { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01', quantity: '100' },
         {
           item_id: 'i2',
           batch_number: 'LOT-B',
           expiry_date: '2031-06-01',
+          quantity: '50',
           manufacturing_date: '2026-06-01',
           storage_location: 'Cold Room A',
         },
       ],
     });
+  });
+
+  it('splits one PO line across multiple lots', () => {
+    const payload = toReceivePayload({
+      lines: [
+        { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01', quantity: '60', manufacturing_date: '', storage_location: '' },
+        { item_id: 'i1', batch_number: 'LOT-B', expiry_date: '2031-01-01', quantity: '40', manufacturing_date: '', storage_location: '' },
+      ],
+    });
+    expect(payload.lines).toEqual([
+      { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01', quantity: '60' },
+      { item_id: 'i1', batch_number: 'LOT-B', expiry_date: '2031-01-01', quantity: '40' },
+    ]);
   });
 });

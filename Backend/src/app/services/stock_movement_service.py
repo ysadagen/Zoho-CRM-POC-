@@ -33,13 +33,14 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.item import Item
 from app.models.stock_movement import (
     MovementDirection,
     MovementReason,
     StockMovement,
 )
+from app.repositories.batch_repo import BatchRepository
 from app.repositories.stock_movement_repo import StockMovementRepository
 from app.schemas.stock_movement import AdjustmentCreate
 
@@ -52,6 +53,7 @@ class StockMovementService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._movements = StockMovementRepository(session)
+        self._batches = BatchRepository(session)
 
     async def record_movement(
         self,
@@ -149,7 +151,22 @@ class StockMovementService:
         Wraps :meth:`record_movement` with ``reason=ADJUSTMENT`` and
         commits, since the adjustment endpoint is a leaf operation
         (no other work in the same transaction).
+
+        When ``batch_id`` is supplied (#8) the chosen lot's quantity moves by
+        the same amount (lock it first), so the lot figures stay in step with
+        the item aggregate. The lot must belong to the item (422
+        ``BATCH_ITEM_MISMATCH``) and an OUT adjustment can't drive a lot
+        negative (409 ``INSUFFICIENT_STOCK``). The lot write and the item /
+        ledger write share one transaction, so either both land or neither.
         """
+        if payload.batch_id is not None:
+            await self._apply_batch_delta(
+                payload.batch_id,
+                item_id=payload.item_id,
+                direction=payload.direction,
+                quantity=payload.quantity,
+            )
+
         movement = await self.record_movement(
             item_id=payload.item_id,
             direction=payload.direction,
@@ -157,10 +174,39 @@ class StockMovementService:
             quantity=payload.quantity,
             actor_id=actor_id,
             remarks=payload.remarks,
+            batch_id=payload.batch_id,
         )
         await self._session.commit()
         await self._session.refresh(movement)
         return movement
+
+    async def _apply_batch_delta(
+        self,
+        batch_id: uuid.UUID,
+        *,
+        item_id: uuid.UUID,
+        direction: MovementDirection,
+        quantity: Decimal,
+    ) -> None:
+        """Move a chosen lot's quantity for a batch-targeted adjustment (#8)."""
+        lot = await self._batches.get_by_id_for_update(batch_id)
+        if lot is None:
+            raise NotFoundError("Batch not found", code="BATCH_NOT_FOUND")
+        if lot.item_id != item_id:
+            raise ValidationError(
+                f"Batch {batch_id} does not belong to item {item_id}",
+                code="BATCH_ITEM_MISMATCH",
+            )
+        if direction == MovementDirection.IN:
+            lot.quantity += quantity
+        else:
+            if lot.quantity < quantity:
+                raise ConflictError(
+                    f"Insufficient lot stock: {lot.quantity} available in the chosen lot, "
+                    f"{quantity} requested",
+                    code="INSUFFICIENT_STOCK",
+                )
+            lot.quantity -= quantity
 
     async def list_(
         self,
