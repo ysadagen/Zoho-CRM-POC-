@@ -20,6 +20,14 @@ import {
   type ItemCreateValues,
 } from '../item.schema';
 import { itemToEditValues, toCreatePayload, toUpdatePayload } from '../item.transform';
+import {
+  DOSAGE_FORM_OPTIONS,
+  DRUG_SCHEDULE_OPTIONS,
+  MATERIAL_CLASSIFICATION_OPTIONS,
+  PHARMACOPOEIA_OPTIONS,
+  STORAGE_CONDITION_OPTIONS,
+  type Option,
+} from '../pharma';
 
 const FORM_ID = 'item-form';
 
@@ -33,9 +41,29 @@ const EMPTY_CREATE: ItemCreateValues = {
   unit_of_measure: 'kg',
   reorder_threshold: '',
   unit_price: '',
+  storage_condition: '',
+  shelf_life_days: '',
+  // RAW detail
+  material_classification: '',
+  pharmacopoeia: '',
+  is_hazardous: false,
+  // FINISHED detail
+  generic_name: '',
+  brand_name: '',
+  strength: '',
+  dosage_form: '',
+  pack_size: '',
+  ingredients: '',
+  container_specification: '',
+  selling_price: '',
+  license_number: '',
+  registration_code: '',
+  mrp: '',
+  drug_schedule: '',
+  is_prescription_required: false,
 };
 
-/** Form field keys we can route a Backend 422 `field` to. */
+/** Top-level form field keys we can route a Backend 422 `field` to. */
 const FORM_FIELDS = new Set<keyof ItemCreateValues>([
   'sku',
   'name',
@@ -46,6 +74,8 @@ const FORM_FIELDS = new Set<keyof ItemCreateValues>([
   'unit_of_measure',
   'reorder_threshold',
   'unit_price',
+  'storage_condition',
+  'shelf_life_days',
 ]);
 
 export interface ItemFormDrawerProps {
@@ -60,7 +90,8 @@ export interface ItemFormDrawerProps {
 /**
  * Create/edit drawer. Mount it only while open (the caller conditionally
  * renders it) so each open starts from fresh form state. The Backend won't
- * PATCH sku/type/stock, so in edit mode those are shown read-only.
+ * PATCH sku/type/stock, so in edit mode those are shown read-only. The pharma
+ * detail section follows `type`: raw materials vs finished products.
  */
 export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawerProps): JSX.Element {
   const isCreate = mode === 'create';
@@ -73,13 +104,12 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors },
   } = useForm<ItemCreateValues>({
     resolver: isCreate
       ? zodResolver(itemCreateSchema)
-      : // Edit validates the PATCH-safe subset; create-only keys are stripped by
-        // Zod. The value type stays the superset, so cast the narrower resolver.
-        (zodResolver(itemEditSchema) as Resolver<ItemCreateValues>),
+      : (zodResolver(itemEditSchema) as Resolver<ItemCreateValues>),
     defaultValues:
       isCreate || !item
         ? EMPTY_CREATE
@@ -87,6 +117,7 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
   });
 
   const pending = createMut.isPending || updateMut.isPending;
+  const currentType = watch('type');
 
   const routeError = (error: unknown, scope: string): void => {
     if (error instanceof ApiError && error.isValidation() && error.field) {
@@ -109,8 +140,8 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
         },
         onError: (error) => routeError(error, 'items.create'),
       });
-    } else {
-      updateMut.mutate(toUpdatePayload(values), {
+    } else if (item) {
+      updateMut.mutate(toUpdatePayload(values, item.type), {
         onSuccess: (updated) => {
           toast.success(`${updated.name} updated.`);
           onClose();
@@ -119,6 +150,48 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
       });
     }
   };
+
+  // Small local helpers to keep the (long) pharma form DRY + consistent.
+  const enumField = (
+    field: keyof ItemCreateValues,
+    label: string,
+    options: Option<string>[],
+  ): JSX.Element => (
+    <Field label={label} htmlFor={`item-${field}`} error={errors[field]?.message}>
+      <Select id={`item-${field}`} invalid={!!errors[field]} {...register(field)}>
+        <option value="">— none —</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+
+  const textField = (
+    field: keyof ItemCreateValues,
+    label: string,
+    opts: { type?: string; hint?: string } = {},
+  ): JSX.Element => (
+    <Field label={label} htmlFor={`item-${field}`} hint={opts.hint} error={errors[field]?.message}>
+      <Input
+        id={`item-${field}`}
+        type={opts.type}
+        min={opts.type === 'number' ? '0' : undefined}
+        step={opts.type === 'number' ? 'any' : undefined}
+        invalid={!!errors[field]}
+        {...register(field)}
+      />
+    </Field>
+  );
+
+  const checkRow = (field: keyof ItemCreateValues, label: string): JSX.Element => (
+    <label className="check-row" htmlFor={`item-${field}`}>
+      <input id={`item-${field}`} type="checkbox" {...register(field)} />
+      {label}
+    </label>
+  );
 
   return (
     <Drawer open onClose={onClose} title={isCreate ? 'Add Item' : 'Edit Item'}>
@@ -169,60 +242,76 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
           />
         </Field>
 
-        <Field label="Unit of measure" htmlFor="item-unit" required error={errors.unit_of_measure?.message}>
-          <Select id="item-unit" invalid={!!errors.unit_of_measure} {...register('unit_of_measure')}>
-            {ITEM_UNITS.map((unit) => (
-              <option key={unit} value={unit}>
-                {unit}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        {isCreate && (
-          <Field
-            label="Initial stock"
-            htmlFor="item-stock"
-            hint="Defaults to 0"
-            error={errors.stock_quantity?.message}
-          >
-            <Input
-              id="item-stock"
-              type="number"
-              min="0"
-              step="any"
-              invalid={!!errors.stock_quantity}
-              {...register('stock_quantity')}
-            />
+        <div className="form-grid">
+          <Field label="Unit of measure" htmlFor="item-unit" required error={errors.unit_of_measure?.message}>
+            <Select id="item-unit" invalid={!!errors.unit_of_measure} {...register('unit_of_measure')}>
+              {ITEM_UNITS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </Select>
           </Field>
+
+          {isCreate &&
+            textField('stock_quantity', 'Initial stock', { type: 'number', hint: 'Defaults to 0' })}
+
+          {textField('reorder_threshold', 'Reorder threshold', {
+            type: 'number',
+            hint: 'Low-stock alert',
+          })}
+          {textField('unit_price', 'Unit price', { type: 'number' })}
+        </div>
+
+        <div className="divider" />
+        <div className="sect-title">Storage &amp; shelf life</div>
+        <div className="form-grid">
+          {enumField('storage_condition', 'Storage condition', STORAGE_CONDITION_OPTIONS)}
+          {textField('shelf_life_days', 'Shelf life (days)', { type: 'number' })}
+        </div>
+
+        {currentType === 'RAW' ? (
+          <>
+            <div className="divider" />
+            <div className="sect-title">Raw material details</div>
+            <div className="form-grid">
+              {enumField('material_classification', 'Classification', MATERIAL_CLASSIFICATION_OPTIONS)}
+              {enumField('pharmacopoeia', 'Pharmacopoeia', PHARMACOPOEIA_OPTIONS)}
+            </div>
+            {checkRow('is_hazardous', 'Hazardous material')}
+          </>
+        ) : (
+          <>
+            <div className="divider" />
+            <div className="sect-title">Finished product details</div>
+            <div className="form-grid">
+              {textField('generic_name', 'Generic name')}
+              {textField('brand_name', 'Brand name')}
+              {textField('strength', 'Strength', { hint: 'e.g. 500 mg' })}
+              {enumField('dosage_form', 'Dosage form', DOSAGE_FORM_OPTIONS)}
+              {textField('pack_size', 'Pack size', { hint: 'e.g. 10x10' })}
+              {textField('container_specification', 'Container spec')}
+              {textField('selling_price', 'Selling price', { type: 'number' })}
+              {textField('mrp', 'MRP', { type: 'number' })}
+              {textField('license_number', 'License number')}
+              {textField('registration_code', 'Registration code')}
+              {enumField('drug_schedule', 'Drug schedule', DRUG_SCHEDULE_OPTIONS)}
+            </div>
+            <Field
+              label="Ingredients"
+              htmlFor="item-ingredients"
+              hint="List of ingredients"
+              error={errors.ingredients?.message}
+            >
+              <Textarea
+                id="item-ingredients"
+                invalid={!!errors.ingredients}
+                {...register('ingredients')}
+              />
+            </Field>
+            {checkRow('is_prescription_required', 'Prescription required')}
+          </>
         )}
-
-        <Field
-          label="Reorder threshold"
-          htmlFor="item-threshold"
-          hint="Used for low-stock alerts"
-          error={errors.reorder_threshold?.message}
-        >
-          <Input
-            id="item-threshold"
-            type="number"
-            min="0"
-            step="any"
-            invalid={!!errors.reorder_threshold}
-            {...register('reorder_threshold')}
-          />
-        </Field>
-
-        <Field label="Unit price" htmlFor="item-price" required error={errors.unit_price?.message}>
-          <Input
-            id="item-price"
-            type="number"
-            min="0"
-            step="any"
-            invalid={!!errors.unit_price}
-            {...register('unit_price')}
-          />
-        </Field>
 
         <div className="drawer-foot">
           <Button variant="sec" onClick={onClose}>

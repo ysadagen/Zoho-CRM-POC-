@@ -9,13 +9,20 @@ import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Tabs } from '@/components/ui/Tabs';
 import { formatCurrency, formatDate, formatQuantity, formatRelative } from '@/lib/format';
-import type { Item } from '@/types/api.types';
+import type { FinishedItemDetail, Item, RawItemDetail } from '@/types/api.types';
 
 import { ItemStatusBadge, ItemTypeBadge } from '../components/ItemBadges';
 import { ItemFormDrawer } from '../components/ItemFormDrawer';
 import { ItemMovementsTab } from '../components/ItemMovementsTab';
 import { useItem, useItemMovements } from '../hooks/useItems';
 import { summariseMovements } from '../item.transform';
+import {
+  dosageFormLabel,
+  drugScheduleLabel,
+  materialClassificationLabel,
+  pharmacopoeiaLabel,
+  storageConditionLabel,
+} from '../pharma';
 import '../items.css';
 
 type DetailTab = 'overview' | 'history';
@@ -48,13 +55,67 @@ function Overview({ item }: { item: Item }): JSX.Element {
           value={item.reorder_threshold ? formatQuantity(item.reorder_threshold, unit) : '—'}
         />
         <Detail label="Current stock" value={formatQuantity(item.stock_quantity, unit)} />
+        <Detail label="Storage condition" value={storageConditionLabel(item.storage_condition)} />
+        <Detail
+          label="Shelf life"
+          value={item.shelf_life_days != null ? `${item.shelf_life_days} days` : '—'}
+        />
         <div className="full">
           <Detail label="Description" value={item.description ?? '—'} />
         </div>
         <Detail label="Created" value={formatDate(item.created_at)} />
         <Detail label="Last updated" value={formatDate(item.updated_at)} />
       </div>
+
+      {item.raw_detail && <RawDetail detail={item.raw_detail} />}
+      {item.finished_detail && <FinishedDetail detail={item.finished_detail} />}
     </Card>
+  );
+}
+
+function RawDetail({ detail }: { detail: RawItemDetail }): JSX.Element {
+  return (
+    <>
+      <div className="divider mt-16" />
+      <div className="sect-title mb-8">Raw material details</div>
+      <div className="item-overview">
+        <Detail
+          label="Classification"
+          value={materialClassificationLabel(detail.material_classification)}
+        />
+        <Detail label="Pharmacopoeia" value={pharmacopoeiaLabel(detail.pharmacopoeia)} />
+        <Detail label="Hazardous" value={detail.is_hazardous ? 'Yes' : 'No'} />
+      </div>
+    </>
+  );
+}
+
+function FinishedDetail({ detail }: { detail: FinishedItemDetail }): JSX.Element {
+  return (
+    <>
+      <div className="divider mt-16" />
+      <div className="sect-title mb-8">Finished product details</div>
+      <div className="item-overview">
+        <Detail label="Generic name" value={detail.generic_name ?? '—'} />
+        <Detail label="Brand name" value={detail.brand_name ?? '—'} />
+        <Detail label="Strength" value={detail.strength ?? '—'} />
+        <Detail label="Dosage form" value={dosageFormLabel(detail.dosage_form)} />
+        <Detail label="Pack size" value={detail.pack_size ?? '—'} />
+        <Detail label="Container spec" value={detail.container_specification ?? '—'} />
+        <Detail
+          label="Selling price"
+          value={detail.selling_price ? formatCurrency(detail.selling_price) : '—'}
+        />
+        <Detail label="MRP" value={detail.mrp ? formatCurrency(detail.mrp) : '—'} />
+        <Detail label="Drug schedule" value={drugScheduleLabel(detail.drug_schedule)} />
+        <Detail label="Prescription" value={detail.is_prescription_required ? 'Required' : 'OTC'} />
+        <Detail label="License number" value={detail.license_number ?? '—'} />
+        <Detail label="Registration code" value={detail.registration_code ?? '—'} />
+        <div className="full">
+          <Detail label="Ingredients" value={detail.ingredients ?? '—'} />
+        </div>
+      </div>
+    </>
   );
 }
 

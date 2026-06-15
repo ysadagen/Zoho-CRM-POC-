@@ -1,5 +1,10 @@
 import { apiGet, apiPost } from '@/lib/api/client';
-import type { Paginated, PurchaseOrder, PurchaseOrderCreateRequest } from '@/types/api.types';
+import type {
+  Paginated,
+  PurchaseOrder,
+  PurchaseOrderCreateRequest,
+  PurchaseOrderReceiveRequest,
+} from '@/types/api.types';
 import type { PurchaseOrderStatus } from '@/types/enums';
 
 const PURCHASE_ORDERS = '/api/v1/purchase-orders';
@@ -31,6 +36,13 @@ export function createPurchaseOrder(body: PurchaseOrderCreateRequest): Promise<P
 }
 
 /** Atomically receives a DRAFT PO (stock IN). No body. 409 PO_NOT_DRAFT if not draft. */
-export function receivePurchaseOrder(id: string): Promise<PurchaseOrder> {
-  return apiPost<PurchaseOrder>(`${PURCHASE_ORDERS}/${id}/receive`);
+/** Receive a PO — body carries one lot (batch) per line (Backend §9.8, Phase 1C). */
+export function receivePurchaseOrder(
+  id: string,
+  body: PurchaseOrderReceiveRequest,
+): Promise<PurchaseOrder> {
+  return apiPost<PurchaseOrder, PurchaseOrderReceiveRequest>(
+    `${PURCHASE_ORDERS}/${id}/receive`,
+    body,
+  );
 }

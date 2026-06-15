@@ -26,6 +26,33 @@ export const poCreateSchema = z.object({
 export type PoFormValues = z.infer<typeof poCreateSchema>;
 export type PoLineValues = z.infer<typeof lineSchema>;
 
+/* ---- Receive (one lot per line) — Backend §9.8, Phase 1C ---- */
+
+const receiveLineSchema = z
+  .object({
+    item_id: z.string(),
+    batch_number: z
+      .string()
+      .trim()
+      .min(1, 'Batch number required')
+      .max(64, 'Keep the batch number under 64 characters'),
+    expiry_date: z.string().min(1, 'Expiry date required'),
+    // Optional — blank means "not recorded".
+    manufacturing_date: z.string(),
+    storage_location: z.string().trim().max(120, 'Keep the location under 120 characters'),
+  })
+  .refine(
+    (l) => l.manufacturing_date === '' || l.expiry_date >= l.manufacturing_date,
+    { message: 'Expiry must be on or after the manufacturing date', path: ['expiry_date'] },
+  );
+
+export const poReceiveSchema = z.object({
+  lines: z.array(receiveLineSchema).min(1, 'A purchase order must have at least one line'),
+});
+
+export type PoReceiveValues = z.infer<typeof poReceiveSchema>;
+export type PoReceiveLineValues = z.infer<typeof receiveLineSchema>;
+
 export const EMPTY_LINE: PoLineValues = { item_id: '', quantity: '', unit_price: '' };
 
 export const EMPTY_PO: PoFormValues = {

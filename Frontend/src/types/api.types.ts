@@ -9,13 +9,19 @@
  */
 
 import type {
+  BatchStatus,
+  DosageForm,
+  DrugSchedule,
   ItemStatus,
   ItemType,
+  MaterialClassification,
   MovementDirection,
   MovementReason,
   MovementReferenceType,
+  Pharmacopoeia,
   PurchaseOrderStatus,
   SalesOrderStatus,
+  StorageCondition,
 } from './enums';
 
 /* ============================================================
@@ -79,6 +85,30 @@ export interface UserUpdateRequest {
  *  Items
  * ============================================================ */
 
+/** RAW-specific attributes (1:1 with the item). Null fields = unset. */
+export interface RawItemDetail {
+  material_classification: MaterialClassification | null;
+  pharmacopoeia: Pharmacopoeia | null;
+  is_hazardous: boolean;
+}
+
+/** FINISHED-product-specific attributes (1:1 with the item). */
+export interface FinishedItemDetail {
+  generic_name: string | null;
+  brand_name: string | null;
+  strength: string | null;
+  dosage_form: DosageForm | null;
+  pack_size: string | null;
+  ingredients: string | null;
+  container_specification: string | null;
+  selling_price: string | null;
+  license_number: string | null;
+  registration_code: string | null;
+  mrp: string | null;
+  drug_schedule: DrugSchedule | null;
+  is_prescription_required: boolean;
+}
+
 export interface Item {
   id: string;
   sku: string;
@@ -90,11 +120,20 @@ export interface Item {
   stock_quantity: string;
   reorder_threshold: string | null;
   unit_price: string;
+  storage_condition: StorageCondition | null;
+  shelf_life_days: number | null;
   status: ItemStatus;
   is_active: boolean;
+  /** Exactly one is populated, matching `type` (the other is null). */
+  raw_detail: RawItemDetail | null;
+  finished_detail: FinishedItemDetail | null;
   created_at: string;
   updated_at: string;
 }
+
+/** Detail blocks on create/patch — every field optional (partial-patch). */
+export type RawItemDetailInput = Partial<RawItemDetail>;
+export type FinishedItemDetailInput = Partial<FinishedItemDetail>;
 
 export interface ItemCreateRequest {
   sku: string;
@@ -106,6 +145,10 @@ export interface ItemCreateRequest {
   stock_quantity?: string;
   reorder_threshold?: string;
   unit_price: string;
+  storage_condition?: StorageCondition;
+  shelf_life_days?: number;
+  raw_detail?: RawItemDetailInput;
+  finished_detail?: FinishedItemDetailInput;
 }
 
 export interface ItemUpdateRequest {
@@ -115,6 +158,10 @@ export interface ItemUpdateRequest {
   unit_of_measure?: string;
   reorder_threshold?: string;
   unit_price?: string;
+  storage_condition?: StorageCondition;
+  shelf_life_days?: number;
+  raw_detail?: RawItemDetailInput;
+  finished_detail?: FinishedItemDetailInput;
   is_active?: boolean;
 }
 
@@ -224,6 +271,8 @@ export interface StockMovement {
   stock_after: string;
   reference_type: MovementReferenceType | null;
   reference_id: string | null;
+  /** The physical lot this movement touched (PO receive / SO ship); null otherwise. */
+  batch_id: string | null;
   remarks: string | null;
   created_by_user_id: string;
   created_at: string;
@@ -234,6 +283,45 @@ export interface ManualAdjustmentRequest {
   direction: MovementDirection;
   quantity: string;
   remarks: string;
+}
+
+/* ============================================================
+ *  Batches (pharma — lots)
+ * ============================================================ */
+
+export interface Batch {
+  id: string;
+  item_id: string;
+  batch_number: string;
+  batch_status: BatchStatus;
+  batch_received_date: string | null;
+  manufacturing_date: string | null;
+  expiry_date: string;
+  quantity: string;
+  initial_quantity: string;
+  unit_cost: string | null;
+  storage_location: string | null;
+  vendor_id: string | null;
+  received_via_po_id: string | null;
+  /** Computed by the Backend: expiry_date < today. */
+  is_expired: boolean;
+  created_by_user_id: string;
+  updated_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Opening-balance lot creation (POST /batches). */
+export interface BatchCreateRequest {
+  item_id: string;
+  batch_number: string;
+  expiry_date: string;
+  manufacturing_date?: string;
+  quantity: string;
+  unit_cost?: string;
+  storage_location?: string;
+  batch_status?: BatchStatus;
+  batch_received_date?: string;
 }
 
 /* ============================================================
@@ -277,6 +365,19 @@ export interface PurchaseOrderCreateRequest {
   expected_delivery_date?: string;
   notes?: string;
   items: PurchaseOrderCreateLine[];
+}
+
+/** One lot's details supplied at receive time — one per PO line, by item_id. */
+export interface PurchaseOrderReceiveLine {
+  item_id: string;
+  batch_number: string;
+  expiry_date: string;
+  manufacturing_date?: string;
+  storage_location?: string;
+}
+
+export interface PurchaseOrderReceiveRequest {
+  lines: PurchaseOrderReceiveLine[];
 }
 
 /* ============================================================

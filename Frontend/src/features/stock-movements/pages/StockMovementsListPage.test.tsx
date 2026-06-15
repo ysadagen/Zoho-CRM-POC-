@@ -27,6 +27,7 @@ const MOVEMENTS = [
     stock_after: '100',
     reference_type: 'PURCHASE_ORDER',
     reference_id: 'po1',
+    batch_id: 'b1',
     remarks: null,
     created_by_user_id: 'u1',
     created_at: '2026-05-01T10:00:00Z',
@@ -50,6 +51,12 @@ function handlers(onUrl?: (url: URL) => void) {
     ),
     http.get(`${BASE}/customers`, () =>
       HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+    ),
+    // Lot resolution joins movement.batch_id → batch number client-side.
+    http.get(`${BASE}/batches`, () =>
+      HttpResponse.json(
+        { items: [{ id: 'b1', item_id: 'i1', batch_number: 'LOT-7' }], total: 1, limit: 100, offset: 0 },
+      ),
     ),
     http.get(`${BASE}/stock-movements`, ({ request }) => {
       onUrl?.(new URL(request.url));
@@ -75,6 +82,14 @@ describe('StockMovementsListPage', () => {
 
     expect(await screen.findByText('Acme Steel Co')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Customer / Vendor' })).toBeInTheDocument();
+  });
+
+  it('shows the lot (batch number) a movement touched', async () => {
+    server.use(...handlers());
+    renderWithProviders(<StockMovementsListPage />);
+
+    expect(await screen.findByText('LOT-7')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Lot' })).toBeInTheDocument();
   });
 
   it('is read-only — no edit or delete controls', async () => {

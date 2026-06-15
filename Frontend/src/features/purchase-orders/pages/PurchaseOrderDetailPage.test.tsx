@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -71,10 +71,15 @@ describe('PurchaseOrderDetailPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
     const dialog = await screen.findByRole('dialog', { name: 'Receive PO-202605-000001' });
+    // Lot details are required to receive (pharma stock enters with an expiry).
+    await user.type(within(dialog).getByLabelText(/Batch number/), 'LOT-A');
+    fireEvent.change(within(dialog).getByLabelText(/Expiry date/), {
+      target: { value: '2030-01-01' },
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Confirm receive' }));
 
     await waitFor(() => expect(received).toBe(true));
-    expect(await screen.findByText('Stock updated.')).toBeInTheDocument();
+    expect(await screen.findByText('Stock received — lots created.')).toBeInTheDocument();
   });
 
   it('shows a page error with the Request ID when the PO fails to load', async () => {

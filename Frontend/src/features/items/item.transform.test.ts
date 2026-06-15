@@ -24,6 +24,10 @@ function item(overrides: Partial<Item> = {}): Item {
     stock_quantity: '100',
     reorder_threshold: '50',
     unit_price: '10',
+    storage_condition: null,
+    shelf_life_days: null,
+    raw_detail: null,
+    finished_detail: null,
     status: 'IN_STOCK',
     is_active: true,
     created_at: '2026-01-01T00:00:00Z',
@@ -44,6 +48,7 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     stock_after: '100',
     reference_type: 'PURCHASE_ORDER',
     reference_id: 'po1',
+    batch_id: null,
     remarks: null,
     created_by_user_id: 'u1',
     created_at: '2026-05-01T10:00:00Z',
@@ -86,6 +91,27 @@ describe('summariseMovements', () => {
 });
 
 describe('toCreatePayload', () => {
+  const PHARMA_EMPTY = {
+    storage_condition: '',
+    shelf_life_days: '',
+    material_classification: '',
+    pharmacopoeia: '',
+    is_hazardous: false,
+    generic_name: '',
+    brand_name: '',
+    strength: '',
+    dosage_form: '',
+    pack_size: '',
+    ingredients: '',
+    container_specification: '',
+    selling_price: '',
+    license_number: '',
+    registration_code: '',
+    mrp: '',
+    drug_schedule: '',
+    is_prescription_required: false,
+  };
+
   const base: ItemCreateValues = {
     sku: 'BOT-1L',
     name: '1L Bottle',
@@ -96,9 +122,10 @@ describe('toCreatePayload', () => {
     reorder_threshold: '',
     unit_price: '45',
     description: '',
+    ...PHARMA_EMPTY,
   };
 
-  it('includes only the filled optionals', () => {
+  it('includes only the filled optionals + the type-matched detail block', () => {
     const payload = toCreatePayload({ ...base, stock_quantity: '', reorder_threshold: '', description: '' });
     expect(payload).toEqual({
       sku: 'BOT-1L',
@@ -107,39 +134,87 @@ describe('toCreatePayload', () => {
       category: 'Bottles',
       unit_of_measure: 'pcs',
       unit_price: '45',
+      // FINISHED item → finished_detail (the boolean is always carried).
+      finished_detail: { is_prescription_required: false },
     });
   });
 
-  it('carries optionals through when present', () => {
+  it('carries optionals + pharma fields through when present', () => {
     const payload = toCreatePayload({
       ...base,
       description: 'Round bottle',
       stock_quantity: '500',
       reorder_threshold: '100',
+      storage_condition: 'COLD_CHAIN_2_8',
+      shelf_life_days: '365',
+      generic_name: 'Paracetamol',
+      dosage_form: 'TABLET',
+      mrp: '25.00',
+      is_prescription_required: true,
     });
     expect(payload).toMatchObject({
       description: 'Round bottle',
       stock_quantity: '500',
       reorder_threshold: '100',
+      storage_condition: 'COLD_CHAIN_2_8',
+      shelf_life_days: 365,
+      finished_detail: {
+        generic_name: 'Paracetamol',
+        dosage_form: 'TABLET',
+        mrp: '25.00',
+        is_prescription_required: true,
+      },
     });
+  });
+
+  it('builds raw_detail for a RAW item', () => {
+    const payload = toCreatePayload({
+      ...base,
+      type: 'RAW',
+      material_classification: 'API',
+      is_hazardous: true,
+    });
+    expect(payload.raw_detail).toEqual({ material_classification: 'API', is_hazardous: true });
+    expect(payload).not.toHaveProperty('finished_detail');
   });
 });
 
 describe('toUpdatePayload', () => {
-  it('only sends PATCH-safe fields', () => {
-    const payload = toUpdatePayload({
-      name: 'New name',
-      category: 'Bottles',
-      description: '',
-      unit_of_measure: 'kg',
-      reorder_threshold: '',
-      unit_price: '12.50',
-    });
+  const editBase = {
+    name: 'New name',
+    category: 'Bottles',
+    description: '',
+    unit_of_measure: 'kg' as const,
+    reorder_threshold: '',
+    unit_price: '12.50',
+    storage_condition: '',
+    shelf_life_days: '',
+    material_classification: '',
+    pharmacopoeia: '',
+    is_hazardous: false,
+    generic_name: '',
+    brand_name: '',
+    strength: '',
+    dosage_form: '',
+    pack_size: '',
+    ingredients: '',
+    container_specification: '',
+    selling_price: '',
+    license_number: '',
+    registration_code: '',
+    mrp: '',
+    drug_schedule: '',
+    is_prescription_required: false,
+  };
+
+  it('only sends PATCH-safe fields + the type-matched detail block', () => {
+    const payload = toUpdatePayload(editBase, 'RAW');
     expect(payload).toEqual({
       name: 'New name',
       category: 'Bottles',
       unit_of_measure: 'kg',
       unit_price: '12.50',
+      raw_detail: { is_hazardous: false },
     });
     expect(payload).not.toHaveProperty('sku');
     expect(payload).not.toHaveProperty('stock_quantity');
@@ -157,7 +232,33 @@ describe('itemToEditValues', () => {
       unit_of_measure: 'kg',
       reorder_threshold: '',
       unit_price: '10',
+      storage_condition: '',
+      shelf_life_days: '',
+      material_classification: '',
+      pharmacopoeia: '',
+      is_hazardous: false,
+      generic_name: '',
+      brand_name: '',
+      strength: '',
+      dosage_form: '',
+      pack_size: '',
+      ingredients: '',
+      container_specification: '',
+      selling_price: '',
+      license_number: '',
+      registration_code: '',
+      mrp: '',
+      drug_schedule: '',
+      is_prescription_required: false,
     });
+  });
+
+  it('seeds the raw/finished detail block from the item', () => {
+    const raw = itemToEditValues(
+      item({ raw_detail: { material_classification: 'API', pharmacopoeia: 'IP', is_hazardous: true } }),
+    );
+    expect(raw.material_classification).toBe('API');
+    expect(raw.is_hazardous).toBe(true);
   });
 
   it('falls back to a known unit when the Backend unit is unfamiliar', () => {

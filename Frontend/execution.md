@@ -854,6 +854,81 @@ npm run dev            # dashboard New Order menu; Items unit price; Quick
 
 ---
 
+## Pharma alignment — bringing the Frontend up to the Backend pharma upgrade
+
+The Backend shipped a pharmaceutical-inventory upgrade (see
+`../Backend/proposal.md` + `../Backend/execution.md`): item raw/finished detail
+blocks, common-pharma fields, lots (`batches`), PO-receive-into-lots, and
+FEFO ship. This track aligns the Frontend to `../Backend/docs/Backend_Reference.md`.
+Ordered, non-breaking phases.
+
+| Phase | Slice | Status |
+|---|---|---|
+| FE-0 | Type/enum foundation — mirror the new Backend schema | ✅ **SHIPPED** |
+| FE-1 | PO receive → lots (the **breaking** fix) | ✅ **SHIPPED** |
+| FE-2 | Items: pharma fields + raw/finished detail blocks (form + detail page) | ✅ **SHIPPED** |
+| FE-3 | Batches: new section — list lots, expiry view, opening-balance create | ✅ **SHIPPED** |
+| FE-4 | Stock Movements: surface the lot (`batch_id`) on the ledger | ✅ **SHIPPED** |
+
+### FE-0 — Type/enum foundation ✅ SHIPPED (2026-06-12)
+- `types/enums.ts`: added `StorageCondition`, `MaterialClassification`,
+  `Pharmacopoeia`, `DosageForm`, `DrugSchedule`, `BatchStatus`.
+- `types/api.types.ts`: `Item` gains `storage_condition`/`shelf_life_days`/
+  `raw_detail`/`finished_detail`; new `RawItemDetail`/`FinishedItemDetail`
+  (+ `*Input`); `StockMovement` gains `batch_id`; new `Batch`/`BatchCreateRequest`;
+  new `PurchaseOrderReceive*` request types. Additive — no behaviour change.
+
+### FE-1 — PO receive → lots ✅ SHIPPED (2026-06-12)
+The Backend now **requires** a per-line lot body on receive, so the old
+no-body receive was broken. Fixed:
+- `po.api.ts` `receivePurchaseOrder(id, body)`; `useReceivePurchaseOrder` takes
+  the body; `po.schema.ts` `poReceiveSchema`; `po.transform.ts`
+  `receiveDefaults` + `toReceivePayload` (replaced `receiveDeltas`).
+- `ReceivePoModal` rewritten: an RHF form collecting `batch_number` (required),
+  `expiry_date` (required), optional `manufacturing_date` / `storage_location`
+  per line; submits `{ lines: [...] }`. Design-system fields only.
+- Tests updated (po.api, po.transform, PO detail + list pages).
+
+**Verification:** `npm run lint` clean, `tsc -b` clean, **290 tests pass**.
+
+### FE-2 — Items pharma UI ✅ SHIPPED (2026-06-12)
+- New `features/items/pharma.ts`: option lists + human label fns for the pharma
+  enums (single source for selects + read views).
+- `item.schema.ts`: common-pharma fields (`storage_condition`, `shelf_life_days`)
+  + type-gated RAW/FINISHED detail fields (all optional).
+- `item.transform.ts`: `toCreatePayload`/`toUpdatePayload` build the matching
+  detail block (`toUpdatePayload` takes `type`); `itemToEditValues` seeds it.
+- `ItemFormDrawer`: grouped "Storage & shelf life" + a **type-conditional**
+  Raw/Finished detail section (selects, checkboxes), `watch('type')`-driven.
+- `ItemDetailPage`: renders the common fields + the matching detail block with
+  human labels.
+- Tests: transform cases, a finished-product create flow, and detail-page
+  display (raw + finished).
+
+### FE-3 — Batches feature ✅ SHIPPED (2026-06-12)
+- New `features/batches/` slice: `api` (list/get/create), `hooks`, `keys`,
+  `batch.schema`, `batch.transform` (status badge map + options + payload),
+  components (`BatchStatusBadge`, `BatchesTable`, `BatchesToolbar`,
+  `BatchFormDrawer`), and `BatchesListPage`.
+- Nav entry (`Batches`, `package` icon) + `/batches` route.
+- List page: item/status/expiring-before filters, expiry + `is_expired` badge,
+  status badge, pager; opening-balance create drawer (item select, batch no.,
+  expiry, qty, cost, location, status) handling 404/409/422 via toasts.
+- Tests: transform, form drawer (create/validation/§5.6 error toast), list page
+  (render/filter/empty/open drawer).
+
+### FE-4 — Stock Movements lot column ✅ SHIPPED (2026-06-15)
+- `StockMovementsTable` gains a **Lot** column (after Item); page resolves
+  `movement.batch_id` → batch number via a batches lookup (first 100), `—` when
+  no lot. Mirrors the item/party resolution. Read-only.
+- Test: asserts the lot number + the `Lot` column header render.
+
+**Final verification:** `npm run verify` (lint + build) clean, **306 tests
+pass**, `npm run test:coverage` passes (global 95.4% stmts / 84% branch / 82.6%
+funcs). Frontend is fully aligned to `../Backend/docs/Backend_Reference.md`.
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.
