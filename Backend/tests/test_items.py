@@ -407,3 +407,51 @@ async def test_item_status_is_computed_from_stock_and_threshold(
     get_resp = await authenticated_client.get(_item_url(item_id))
     assert get_resp.status_code == 200
     assert get_resp.json()["status"] == expected_status
+
+
+# ---------------------------------------------------------------------------
+# Soft delete via DELETE (#1)
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_item_requires_auth_returns_401(client_with_db: AsyncClient) -> None:
+    response = await client_with_db.delete(_item_url(uuid.uuid4()))
+    assert response.status_code == 401
+
+
+async def test_soft_delete_hides_item_from_default_list(
+    authenticated_client: AsyncClient,
+) -> None:
+    """DELETE deactivates the item: 204, gone from the default list, still
+    fetchable directly with ``is_active=false``, and visible only when
+    ``include_inactive=true`` is passed."""
+    created = await authenticated_client.post(ITEMS_URL, json=_finished_item_payload())
+    item_id = created.json()["id"]
+
+    resp = await authenticated_client.delete(_item_url(item_id))
+    assert resp.status_code == 204
+
+    listed = (await authenticated_client.get(ITEMS_URL)).json()
+    assert item_id not in {i["id"] for i in listed["items"]}
+
+    got = await authenticated_client.get(_item_url(item_id))
+    assert got.status_code == 200
+    assert got.json()["is_active"] is False
+
+    incl = (await authenticated_client.get(ITEMS_URL, params={"include_inactive": "true"})).json()
+    assert item_id in {i["id"] for i in incl["items"]}
+
+
+async def test_soft_delete_is_idempotent(authenticated_client: AsyncClient) -> None:
+    created = await authenticated_client.post(ITEMS_URL, json=_finished_item_payload())
+    item_id = created.json()["id"]
+    first = await authenticated_client.delete(_item_url(item_id))
+    second = await authenticated_client.delete(_item_url(item_id))
+    assert first.status_code == 204
+    assert second.status_code == 204
+
+
+async def test_delete_unknown_item_returns_404(authenticated_client: AsyncClient) -> None:
+    resp = await authenticated_client.delete(_item_url(uuid.uuid4()))
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "ITEM_NOT_FOUND"

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -117,6 +117,31 @@ describe('ItemDetailPage', () => {
     expect(screen.getByText('Raw material details')).toBeInTheDocument();
     expect(screen.getByText('Active (API)')).toBeInTheDocument();
     expect(screen.getByText('Cold chain (2–8°C)')).toBeInTheDocument();
+  });
+
+  it('deactivates the item through the confirm modal (#1)', async () => {
+    let deleted = false;
+    server.use(
+      ...handlers(),
+      http.delete(`${BASE}/items/i1`, () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.get(`${BASE}/items`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0 }),
+      ),
+    );
+    seedSession();
+    const user = userEvent.setup();
+    renderWithProviders(<AppRouter />, { route: '/items/i1' });
+
+    await screen.findByRole('heading', { name: 'Raw Steel' });
+    await user.click(screen.getByRole('button', { name: 'Deactivate' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate Raw Steel?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
+
+    await waitFor(() => expect(deleted).toBe(true));
+    expect(await screen.findByText('Raw Steel deactivated.')).toBeInTheDocument();
   });
 
   it('renders the finished-product detail block with human labels', async () => {

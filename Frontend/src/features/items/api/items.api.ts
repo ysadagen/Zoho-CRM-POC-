@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '@/lib/api/client';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api/client';
 import type {
   Item,
   ItemCreateRequest,
@@ -48,6 +48,11 @@ export function createItem(body: ItemCreateRequest): Promise<ItemCreated> {
 
 export function updateItem(id: string, body: ItemUpdateRequest): Promise<Item> {
   return apiPatch<Item, ItemUpdateRequest>(`${ITEMS}/${id}`, body);
+}
+
+/** Soft-delete (deactivate) an item — the row survives for audit (#1). 204. */
+export function deleteItem(id: string): Promise<void> {
+  return apiDelete<void>(`${ITEMS}/${id}`);
 }
 
 /** Audit movements for one item — powers the detail stat cards + history tab. */

@@ -10,8 +10,14 @@ import {
 import { itemKeys } from '@/features/items/items.keys';
 import { logger } from '@/lib/logger';
 import type { Batch, BatchCreateRequest, Paginated } from '@/types/api.types';
+import type { BatchStatus } from '@/types/enums';
 
-import { createBatch, listBatches, type ListBatchesParams } from '../api/batches.api';
+import {
+  changeBatchStatus,
+  createBatch,
+  listBatches,
+  type ListBatchesParams,
+} from '../api/batches.api';
 import { batchKeys } from '../batches.keys';
 
 export function useBatchesList(params: ListBatchesParams): UseQueryResult<Paginated<Batch>> {
@@ -34,6 +40,23 @@ export function useCreateBatch(): UseMutationResult<Batch, unknown, BatchCreateR
       });
       // Opening-balance lots don't change item stock, but the item's lot
       // coverage changes — refresh both caches.
+      void queryClient.invalidateQueries({ queryKey: batchKeys.all });
+      void queryClient.invalidateQueries({ queryKey: itemKeys.all });
+    },
+  });
+}
+
+export function useChangeBatchStatus(): UseMutationResult<
+  Batch,
+  unknown,
+  { id: string; status: BatchStatus }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }) => changeBatchStatus(id, status),
+    onSuccess: (batch) => {
+      logger.info('batches.status', { batchId: batch.id, status: batch.batch_status });
+      // A recall/reject removes the lot from shipping — refresh lots + items.
       void queryClient.invalidateQueries({ queryKey: batchKeys.all });
       void queryClient.invalidateQueries({ queryKey: itemKeys.all });
     },

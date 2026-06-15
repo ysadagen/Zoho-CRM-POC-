@@ -37,11 +37,14 @@ export function BatchFormDrawer({ onClose, onCreated }: BatchFormDrawerProps): J
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<BatchFormValues>({
     resolver: zodResolver(batchCreateSchema),
     defaultValues: EMPTY_BATCH,
   });
+
+  const itemReg = register('item_id');
 
   const onValid = (values: BatchFormValues): void => {
     createMut.mutate(toBatchCreatePayload(values), {
@@ -63,7 +66,17 @@ export function BatchFormDrawer({ onClose, onCreated }: BatchFormDrawerProps): J
         </p>
 
         <Field label="Item" htmlFor="batch-item" required error={errors.item_id?.message}>
-          <Select id="batch-item" invalid={!!errors.item_id} {...register('item_id')}>
+          <Select
+            id="batch-item"
+            invalid={!!errors.item_id}
+            {...itemReg}
+            onChange={(e) => {
+              void itemReg.onChange(e);
+              // Default the lot's unit cost to the item's catalog price (editable).
+              const picked = items.find((i) => i.id === e.target.value);
+              if (picked) setValue('unit_cost', picked.unit_price, { shouldDirty: true });
+            }}
+          >
             <option value="">Select an item…</option>
             {items.map((item) => (
               <option key={item.id} value={item.id}>

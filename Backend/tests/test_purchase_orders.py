@@ -820,3 +820,161 @@ async def test_receive_rejects_duplicate_batch_number(
     assert po["status"] == "DRAFT"
     item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
     assert Decimal(str(item["stock_quantity"])) == Decimal("100")
+
+
+# ---------------------------------------------------------------------------
+# Multi-lot receive — a PO line split across several lots (#10)
+# ---------------------------------------------------------------------------
+
+
+async def test_receive_splits_line_into_multiple_lots(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A single PO line can be received as several lots whose quantities
+    sum to the line quantity → one batch + one IN movement per lot, and
+    the item's stock rises by the full line quantity."""
+    vendor_id = await _create_vendor(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="0")
+    created = await authenticated_client.post(
+        PURCHASE_ORDERS_URL,
+        json=_po_payload(vendor_id, [_line(item_id, quantity="100", unit_price="12.50")]),
+    )
+    po_id = created.json()["id"]
+
+    resp = await authenticated_client.post(
+        f"{PURCHASE_ORDERS_URL}/{po_id}/receive",
+        json={
+            "lines": [
+                {
+                    "item_id": item_id,
+                    "batch_number": "LOT-A",
+                    "expiry_date": "2030-01-01",
+                    "quantity": "60",
+                },
+                {
+                    "item_id": item_id,
+                    "batch_number": "LOT-B",
+                    "expiry_date": "2031-06-01",
+                    "quantity": "40",
+                },
+            ]
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    # Two distinct lots, quantities 60 + 40, both costed from the PO line.
+    batches = (await authenticated_client.get(f"/api/v1/batches?item_id={item_id}")).json()
+    assert batches["total"] == 2
+    by_number = {b["batch_number"]: b for b in batches["items"]}
+    assert Decimal(str(by_number["LOT-A"]["quantity"])) == Decimal("60")
+    assert Decimal(str(by_number["LOT-B"]["quantity"])) == Decimal("40")
+    assert all(Decimal(str(b["unit_cost"])) == Decimal("12.50") for b in batches["items"])
+
+    # Two IN movements, one per lot; stock rose by the full 100.
+    ledger = (await authenticated_client.get(f"{STOCK_MOVEMENTS_URL}?item_id={item_id}")).json()
+    assert ledger["total"] == 2
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("100")
+
+
+async def test_receive_multi_lot_quantity_mismatch_returns_422(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Lot quantities that don't sum to the PO line quantity are rejected
+    (and nothing is committed)."""
+    vendor_id = await _create_vendor(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="0")
+    created = await authenticated_client.post(
+        PURCHASE_ORDERS_URL,
+        json=_po_payload(vendor_id, [_line(item_id, quantity="100", unit_price="1")]),
+    )
+    po_id = created.json()["id"]
+
+    resp = await authenticated_client.post(
+        f"{PURCHASE_ORDERS_URL}/{po_id}/receive",
+        json={
+            "lines": [
+                {
+                    "item_id": item_id,
+                    "batch_number": "LOT-A",
+                    "expiry_date": "2030-01-01",
+                    "quantity": "60",
+                },
+                {
+                    "item_id": item_id,
+                    "batch_number": "LOT-B",
+                    "expiry_date": "2030-01-01",
+                    "quantity": "30",
+                },
+            ]
+        },
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "RECEIVE_QUANTITY_MISMATCH"
+
+    # Nothing partial: PO still DRAFT, no lots, stock untouched.
+    po = (await authenticated_client.get(f"{PURCHASE_ORDERS_URL}/{po_id}")).json()
+    assert po["status"] == "DRAFT"
+    batches = (await authenticated_client.get(f"/api/v1/batches?item_id={item_id}")).json()
+    assert batches["total"] == 0
+
+
+async def test_receive_multi_lot_missing_quantity_returns_422(
+    authenticated_client: AsyncClient,
+) -> None:
+    """When a line is split across lots, every lot must state a quantity."""
+    vendor_id = await _create_vendor(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="0")
+    created = await authenticated_client.post(
+        PURCHASE_ORDERS_URL,
+        json=_po_payload(vendor_id, [_line(item_id, quantity="100", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(
+        f"{PURCHASE_ORDERS_URL}/{created.json()['id']}/receive",
+        json={
+            "lines": [
+                {
+                    "item_id": item_id,
+                    "batch_number": "LOT-A",
+                    "expiry_date": "2030-01-01",
+                    "quantity": "60",
+                },
+                {"item_id": item_id, "batch_number": "LOT-B", "expiry_date": "2030-01-01"},
+            ]
+        },
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "RECEIVE_QUANTITY_MISMATCH"
+
+
+async def test_receive_rejects_duplicate_batch_within_payload(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Two lots with the same batch number for one item is a duplicate."""
+    vendor_id = await _create_vendor(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="0")
+    created = await authenticated_client.post(
+        PURCHASE_ORDERS_URL,
+        json=_po_payload(vendor_id, [_line(item_id, quantity="100", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(
+        f"{PURCHASE_ORDERS_URL}/{created.json()['id']}/receive",
+        json={
+            "lines": [
+                {
+                    "item_id": item_id,
+                    "batch_number": "DUP",
+                    "expiry_date": "2030-01-01",
+                    "quantity": "60",
+                },
+                {
+                    "item_id": item_id,
+                    "batch_number": "DUP",
+                    "expiry_date": "2031-01-01",
+                    "quantity": "40",
+                },
+            ]
+        },
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "DUPLICATE_BATCH"

@@ -32,6 +32,18 @@ from app.schemas.batch import BatchCreate
 
 logger = logging.getLogger(__name__)
 
+# QC lifecycle (#7). A lot is received into QUARANTINE; QC then RELEASES it
+# (sellable) or REJECTS it (terminal). A RELEASED lot can later be RECALLED
+# (terminal). REJECTED / RECALLED / EXPIRED are terminal — no transitions out.
+# EXPIRED is system-derived (from expiry_date), not a manual transition.
+_ALLOWED_TRANSITIONS: dict[BatchStatus, frozenset[BatchStatus]] = {
+    BatchStatus.QUARANTINE: frozenset({BatchStatus.RELEASED, BatchStatus.REJECTED}),
+    BatchStatus.RELEASED: frozenset({BatchStatus.RECALLED}),
+    BatchStatus.REJECTED: frozenset(),
+    BatchStatus.RECALLED: frozenset(),
+    BatchStatus.EXPIRED: frozenset(),
+}
+
 
 class BatchService:
     """Orchestrates lot flows on top of :class:`BatchRepository`."""
@@ -113,6 +125,51 @@ class BatchService:
         batch = await self._batches.get_by_id(batch_id)
         if batch is None:
             raise NotFoundError("Batch not found", code="BATCH_NOT_FOUND")
+        return batch
+
+    async def change_status(
+        self,
+        batch_id: uuid.UUID,
+        new_status: BatchStatus,
+        *,
+        actor_id: uuid.UUID,
+    ) -> Batch:
+        """Move a lot through its QC lifecycle (#7).
+
+        Only the transitions in :data:`_ALLOWED_TRANSITIONS` are permitted:
+        QUARANTINE → RELEASED / REJECTED, RELEASED → RECALLED. Anything else
+        (including a no-op to the same status, or a move out of a terminal
+        state) is a 409 ``INVALID_BATCH_TRANSITION``. 404 if the lot is unknown.
+
+        REJECTED / RECALLED lots are no longer shippable (see
+        :data:`~app.models.batch.SHIPPABLE_BATCH_STATUSES`), so a recall
+        immediately removes remaining stock from FEFO and explicit lot picks.
+        """
+        batch = await self._batches.get_by_id_for_update(batch_id)
+        if batch is None:
+            raise NotFoundError("Batch not found", code="BATCH_NOT_FOUND")
+
+        if new_status not in _ALLOWED_TRANSITIONS[batch.batch_status]:
+            raise ConflictError(
+                f"Cannot change lot status from {batch.batch_status.value} "
+                f"to {new_status.value}",
+                code="INVALID_BATCH_TRANSITION",
+            )
+
+        previous = batch.batch_status
+        batch.batch_status = new_status
+        batch.updated_by_user_id = actor_id
+        await self._session.commit()
+        await self._session.refresh(batch)
+        logger.info(
+            "batch_status_changed",
+            extra={
+                "batch_id": str(batch.id),
+                "from_status": previous.value,
+                "to_status": new_status.value,
+                "actor_id": str(actor_id),
+            },
+        )
         return batch
 
     async def list_(

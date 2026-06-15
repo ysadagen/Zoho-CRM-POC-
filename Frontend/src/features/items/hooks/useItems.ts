@@ -18,6 +18,7 @@ import type {
 
 import {
   createItem,
+  deleteItem,
   getItem,
   listItemMovements,
   listItems,
@@ -65,6 +66,17 @@ export function useUpdateItem(id: string): UseMutationResult<Item, unknown, Item
     mutationFn: (body: ItemUpdateRequest) => updateItem(id, body),
     onSuccess: (item) => {
       logger.info('items.update', { itemId: item.id, sku: item.sku });
+      void queryClient.invalidateQueries({ queryKey: itemKeys.all });
+    },
+  });
+}
+
+export function useDeleteItem(): UseMutationResult<void, unknown, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteItem(id),
+    onSuccess: (_data, id) => {
+      logger.info('items.delete', { itemId: id });
       void queryClient.invalidateQueries({ queryKey: itemKeys.all });
     },
   });

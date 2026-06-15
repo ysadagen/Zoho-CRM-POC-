@@ -264,7 +264,7 @@ stock_movements.(reference_type, reference_id) →
 | `purchase_orders` | 7 | `id`, `po_number` (unique, `PO-YYYYMM-NNNNNN`), `vendor_id` FK, `order_date`, `expected_delivery_date?`, `received_date?`, `status` (DRAFT/RECEIVED), `subtotal`, `total`, `notes?`, audit |
 | `purchase_order_items` | 7 | `id`, `purchase_order_id` FK CASCADE, `item_id` FK, `quantity`, `unit_price`, `line_total`, `created_at`. UNIQUE (purchase_order_id, item_id) |
 | `sales_orders` | 8 | `id`, `so_number` (unique, `SO-YYYYMM-NNNNNN`), `customer_id` FK, `order_date`, `expected_delivery_date?`, `shipped_date?`, `status` (DRAFT/SHIPPED), `subtotal`, `total`, `notes?`, audit |
-| `sales_order_items` | 8 | `id`, `sales_order_id` FK CASCADE, `item_id` FK, `quantity`, `unit_price`, `line_total`, `created_at`. UNIQUE (sales_order_id, item_id) |
+| `sales_order_items` | 8 | `id`, `sales_order_id` FK CASCADE, `item_id` FK, `batch_id?` FK→`batches` RESTRICT (chosen lot, #9; NULL = FEFO), `quantity`, `unit_price`, `line_total`, `created_at`. UNIQUE (sales_order_id, item_id) |
 | `raw_item_details` | Pharma | `item_id` PK + FK→`items` CASCADE (1:1), `material_classification?` (enum), `pharmacopoeia?` (enum), `is_hazardous`, audit. For `items.type = RAW`. |
 | `finished_item_details` | Pharma | `item_id` PK + FK→`items` CASCADE (1:1), `generic_name?`, `brand_name?`, `strength?`, `dosage_form?` (enum), `pack_size?`, `ingredients?`, `container_specification?`, `selling_price?`, `license_number?`, `registration_code?`, `mrp?`, `drug_schedule?` (enum), `is_prescription_required`, audit. For `items.type = FINISHED`. |
 | `batches` | Pharma | `id`, `item_id` FK→`items`, `batch_number`, `batch_status` (enum, default QUARANTINE), `batch_received_date?`, `manufacturing_date?`, `expiry_date` (NOT NULL), `quantity Numeric(20,4)`, `initial_quantity`, `unit_cost?`, `storage_location?`, `vendor_id?` FK, `received_via_po_id?` FK, audit. UNIQUE (item_id, batch_number) |
@@ -459,9 +459,10 @@ Create an item.
 **Errors** `409 DUPLICATE_SKU`, `422` (incl. `ITEM_DETAIL_TYPE_MISMATCH`)
 
 #### `GET /items`
-**Query** `limit, offset, type (RAW|FINISHED), category, search`
-Search is case-insensitive over SKU + name. Each item carries its matching
-`raw_detail` / `finished_detail` block (the other is `null`).
+**Query** `limit, offset, type (RAW|FINISHED), category, search, include_inactive`
+Search is case-insensitive over SKU + name. Soft-deleted (`is_active=false`)
+items are **excluded** unless `include_inactive=true`. Each item carries its
+matching `raw_detail` / `finished_detail` block (the other is `null`).
 
 #### `GET /items/{item_id}`
 Returns the full record, including computed `status` (`IN_STOCK | LOW_STOCK | NO_STOCK`)
@@ -469,6 +470,13 @@ and the matching `raw_detail` / `finished_detail` block.
 
 #### `PATCH /items/{item_id}`
 Partial update. **`sku`**, **`type`**, and **`stock_quantity`** are not patchable — stock changes go through the movement ledger. May include `storage_condition`, `shelf_life_days`, and a **partial** `raw_detail` / `finished_detail` patch (only fields sent are changed); a block not matching the item's `type` → `422 ITEM_DETAIL_TYPE_MISMATCH`.
+
+#### `DELETE /items/{item_id}`
+**Soft delete** (#1) — sets `is_active=false`, returns `204`. The row is never
+removed (movements, lots, POs and SOs reference it via `ON DELETE RESTRICT`), so
+all history survives. The item drops out of the default list and create flows
+reject it (`404 ITEM_NOT_FOUND` on add to a new order). Idempotent; `404` if the
+id is unknown. (Equivalent to `PATCH {is_active:false}`, but the semantic verb.)
 
 ---
 
@@ -553,11 +561,17 @@ Manual adjustment — the only direct write to the ledger from the API.
   "item_id": "...",
   "direction": "IN",
   "quantity": "25",
-  "remarks": "Recount correction - line B"
+  "remarks": "Recount correction - line B",
+  "batch_id": "<lot>"
 }
 ```
 **`remarks` is required** — accountability gate for a write that has no other paper trail.
-**Errors** `404 ITEM_NOT_FOUND`, `409 INSUFFICIENT_STOCK` (OUT below zero), `422` (missing/empty remarks etc.)
+**`batch_id` is optional (#8):** when given, the chosen lot's quantity moves by
+the same amount (kept in step with the item total, in one transaction); when
+omitted, only the item aggregate moves.
+**Errors** `404 ITEM_NOT_FOUND` / `BATCH_NOT_FOUND`, `422 BATCH_ITEM_MISMATCH`
+(lot isn't this item's), `409 INSUFFICIENT_STOCK` (OUT below zero — item *or* the
+chosen lot), `422` (missing/empty remarks etc.)
 
 ---
 
@@ -599,6 +613,15 @@ Ordered soonest-expiry-first. `expiring_before` returns lots with
 #### `GET /batches/{batch_id}`
 Returns one lot (incl. `is_expired`). `404 BATCH_NOT_FOUND` if unknown.
 
+#### `POST /batches/{batch_id}/status`
+Transition a lot's QC status (#7). Body `{ "status": "RELEASED" }`.
+Legal moves: `QUARANTINE → RELEASED | REJECTED`, `RELEASED → RECALLED`
+(`REJECTED` / `RECALLED` / `EXPIRED` are terminal). **Shipping impact:** only
+`QUARANTINE` and `RELEASED` lots are shippable — a `REJECTED` / `RECALLED` lot is
+skipped by FEFO and refused as an explicit SO lot pick (`409 BATCH_NOT_SHIPPABLE`).
+**Returns** `200` the updated lot. **Errors** `404 BATCH_NOT_FOUND`,
+`409 INVALID_BATCH_TRANSITION` (illegal move, incl. out of a terminal state).
+
 ---
 
 ### 9.8 Purchase Orders (Phase 7)
@@ -633,19 +656,18 @@ and uses `rate * (1 − discount_percent/100)` quantized to 2 dp HALF_UP.
 Returns full PO including all lines.
 
 #### `POST /purchase-orders/{po_id}/receive`
-The keystone. **Requires a body** (Phase 1C) — one batch entry per PO line,
-matched by `item_id`, with an operator-supplied lot number and expiry:
+The keystone. **Requires a body** — one or more lots per PO line, matched by
+`item_id`, with an operator-supplied lot number and expiry. A line may be
+**split across several lots** (multi-lot, #10): give each lot a `quantity` and
+they must sum to the PO line quantity. A line received as a single lot may omit
+`quantity` (the whole line quantity is used):
 
 ```json
 {
   "lines": [
-    {
-      "item_id": "...",
-      "batch_number": "MFG-LOT-2026-07",
-      "expiry_date": "2028-07-01",
-      "manufacturing_date": "2026-07-01",
-      "storage_location": "Cold Room A"
-    }
+    { "item_id": "...", "batch_number": "MFG-LOT-A", "expiry_date": "2028-07-01", "quantity": "60" },
+    { "item_id": "...", "batch_number": "MFG-LOT-B", "expiry_date": "2029-01-01", "quantity": "40",
+      "manufacturing_date": "2026-07-01", "storage_location": "Cold Room A" }
   ]
 }
 ```
@@ -653,16 +675,21 @@ matched by `item_id`, with an operator-supplied lot number and expiry:
 Atomically, in `item_id`-sorted order:
 
 1. `SELECT FOR UPDATE` the PO; require DRAFT.
-2. Validate the entries cover **exactly** the PO's lines; pre-check each lot
-   number is free for its item.
-3. For each line: create a `batches` row (`quantity` = line qty,
-   `unit_cost` = line price, `vendor_id` = PO vendor, `received_via_po_id` = PO,
-   status `QUARANTINE`), then `record_movement(IN, PURCHASE, batch_id=<lot>, reference_type='PURCHASE_ORDER', reference_id=po.id)`.
+2. Group lots by item and resolve each lot's quantity; require every PO line to
+   have ≥1 lot and no lot for an off-PO item; split lines must sum to the line
+   quantity. Pre-check each lot number is free for its item and unique within
+   the payload.
+3. For **each lot**: create a `batches` row (`quantity` = the lot's resolved
+   quantity, `unit_cost` = line price, `vendor_id` = PO vendor,
+   `received_via_po_id` = PO, status `QUARANTINE`), then
+   `record_movement(IN, PURCHASE, batch_id=<lot>, reference_type='PURCHASE_ORDER', reference_id=po.id)`.
 4. Sets `status=RECEIVED, received_date=today`. Single commit.
 
 **Errors** `404 PURCHASE_ORDER_NOT_FOUND`, `409 PO_NOT_DRAFT` (state-boundary
-idempotency), `422 RECEIVE_LINES_MISMATCH` (entries don't cover the lines
-exactly), `409 DUPLICATE_BATCH` (lot number already used for an item).
+idempotency), `422 RECEIVE_LINES_MISMATCH` (lots don't cover the lines),
+`422 RECEIVE_QUANTITY_MISMATCH` (a split line's lot quantities don't sum to the
+line quantity, or a split lot omits its quantity), `409 DUPLICATE_BATCH` (lot
+number already used for an item, or listed twice in the payload).
 
 ---
 
@@ -679,7 +706,7 @@ Create DRAFT.
   "expected_delivery_date": "2026-07-20",
   "notes": "Trial dispatch",
   "items": [
-    { "item_id": "...", "quantity": "5", "unit_price": "60.00" },
+    { "item_id": "...", "quantity": "5", "unit_price": "60.00", "batch_id": "<lot>" },
     { "item_id": "...", "quantity": "10" }
   ]
 }
@@ -688,10 +715,17 @@ Create DRAFT.
 **Pricing fallback:** if `unit_price` is omitted on a line, the service uses
 the item's catalog `unit_price` (Phase 1 has no per-customer pricing table).
 
+**Batch selection (#9):** `batch_id` is optional per line. When given, that line
+ships from that exact lot; when omitted, ship picks lots FEFO. At create the lot
+is validated only for existence + item-match (stock/expiry are enforced at ship,
+like quantity).
+
 **No stock pre-check at create time** — operators may book a DRAFT SO knowing
 stock will be procured before shipping. Stock is enforced at `/ship`.
 
-**Errors** `404 CUSTOMER_NOT_FOUND`/`ITEM_NOT_FOUND` (also inactive), `409 DUPLICATE_LINE_ITEM`
+**Errors** `404 CUSTOMER_NOT_FOUND`/`ITEM_NOT_FOUND`/`BATCH_NOT_FOUND` (also
+inactive), `422 BATCH_ITEM_MISMATCH` (chosen lot isn't this item's),
+`409 DUPLICATE_LINE_ITEM`
 
 #### `GET /sales-orders`
 **Query** `limit, offset, customer_id, status (DRAFT|SHIPPED), date_from, date_to`
@@ -699,14 +733,16 @@ stock will be procured before shipping. Stock is enforced at `/ship`.
 #### `GET /sales-orders/{so_id}`
 
 #### `POST /sales-orders/{so_id}/ship`
-The OUT keystone. **No body** — lot selection is automatic (FEFO). Atomically:
+The OUT keystone. **No body.** Atomically:
 
 1. `SELECT FOR UPDATE` the SO.
-2. For each line in `item_id`-sorted order, consume the item's lots
-   **First-Expiry-First-Out** (Phase 1D): the earliest-expiry non-expired lot
-   is drained first, then the next, writing **one OUT/SALE movement per lot
-   touched** (each carrying `batch_id`). Lot quantities and `items.stock_quantity`
-   drop by the same amount.
+2. For each line in `item_id`-sorted order: if the line names a lot
+   (`batch_id`, #9), ship that **exact lot** (it must still exist, be non-expired,
+   and hold ≥ the line quantity — the whole line ships from it); otherwise consume
+   the item's lots **First-Expiry-First-Out** (the earliest-expiry non-expired lot
+   first, then the next). Either way, **one OUT/SALE movement per lot touched**
+   (each carrying `batch_id`); lot quantities and `items.stock_quantity` drop by
+   the same amount.
 3. Sets `status=SHIPPED, shipped_date=today`.
 4. Single commit.
 
@@ -719,7 +755,10 @@ workflow; for now any non-expired lot is eligible.)
 - `404 SALES_ORDER_NOT_FOUND`
 - `409 SO_NOT_DRAFT` (already shipped — state-boundary idempotency)
 - `409 INSUFFICIENT_STOCK` — the item's non-expired lots can't cover a line
-  (even if `items.stock_quantity` looks sufficient, when stock isn't lot-tracked).
+  (even if `items.stock_quantity` looks sufficient, when stock isn't lot-tracked),
+  or a **chosen** lot (#9) holds less than the line quantity.
+- `409 BATCH_NOT_SHIPPABLE` — a chosen lot is gone, belongs to another item, or is
+  expired at ship time.
   **Entire ship is rolled back** — no partial stock, no partial ledger, SO stays
   DRAFT and can be retried after lots are procured/recorded.
 
