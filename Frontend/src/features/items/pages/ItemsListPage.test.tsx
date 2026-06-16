@@ -55,15 +55,39 @@ describe('ItemsListPage', () => {
     expect(screen.getByText('Bottle 1L')).toBeInTheDocument();
   });
 
-  it('filters by status on the client', async () => {
-    server.use(itemsOk());
+  it('sends the status filter to the server (not a client-side page filter)', async () => {
+    const urls: URL[] = [];
+    server.use(itemsOk((url) => urls.push(url)));
     const user = userEvent.setup();
     renderWithProviders(<ItemsListPage />);
     await screen.findByText('Raw Steel');
 
     await user.click(screen.getByRole('tab', { name: 'Low' }));
-    expect(screen.getByText('Raw Steel')).toBeInTheDocument();
-    expect(screen.queryByText('Bottle 1L')).not.toBeInTheDocument();
+    await waitFor(() => expect(urls.at(-1)?.searchParams.getAll('status')).toEqual(['LOW_STOCK']));
+  });
+
+  it('Attention filter requests both low and out-of-stock', async () => {
+    const urls: URL[] = [];
+    server.use(itemsOk((url) => urls.push(url)));
+    const user = userEvent.setup();
+    renderWithProviders(<ItemsListPage />);
+    await screen.findByText('Raw Steel');
+
+    await user.click(screen.getByRole('tab', { name: 'Attention' }));
+    await waitFor(() =>
+      expect(urls.at(-1)?.searchParams.getAll('status')).toEqual(['LOW_STOCK', 'NO_STOCK']),
+    );
+  });
+
+  it('honours the ?status=attention deep link from the dashboard', async () => {
+    const urls: URL[] = [];
+    server.use(itemsOk((url) => urls.push(url)));
+    renderWithProviders(<ItemsListPage />, { route: '/items?status=attention' });
+    await screen.findByText('Raw Steel');
+
+    await waitFor(() =>
+      expect(urls.at(-1)?.searchParams.getAll('status')).toEqual(['LOW_STOCK', 'NO_STOCK']),
+    );
   });
 
   it('sends the type filter to the server', async () => {

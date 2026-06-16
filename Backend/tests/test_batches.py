@@ -187,3 +187,109 @@ async def test_movement_accepts_valid_batch_id(
 
     db_session.add(_movement(item_id, actor_id, batch_id=batch.id))
     await db_session.flush()  # no error == FK satisfied
+
+
+# ---------------------------------------------------------------------------
+# QC status transitions (#7) — release / reject / recall, via the API
+# ---------------------------------------------------------------------------
+
+BATCHES_URL = "/api/v1/batches"
+
+
+async def _api_lot(
+    client: AsyncClient,
+    *,
+    batch_status: str = "QUARANTINE",
+    qty: str = "100",
+) -> tuple[str, str]:
+    """Create an item (with stock) + a lot via the API → ``(item_id, lot_id)``."""
+    item = await client.post(
+        ITEMS_URL,
+        json={
+            "sku": f"FIN-{uuid.uuid4().hex[:8]}",
+            "name": "Lot Item",
+            "type": "FINISHED",
+            "category": "Bottle",
+            "unit_of_measure": "pcs",
+            "unit_price": "10.00",
+            "stock_quantity": qty,
+        },
+    )
+    item_id = item.json()["id"]
+    lot = await client.post(
+        BATCHES_URL,
+        json={
+            "item_id": item_id,
+            "batch_number": "LOT-1",
+            "expiry_date": "2035-01-01",
+            "quantity": qty,
+            "batch_status": batch_status,
+        },
+    )
+    assert lot.status_code == 201, lot.text
+    return item_id, lot.json()["id"]
+
+
+async def test_change_status_requires_auth_returns_401(client_with_db: AsyncClient) -> None:
+    resp = await client_with_db.post(
+        f"{BATCHES_URL}/{uuid.uuid4()}/status", json={"status": "RELEASED"}
+    )
+    assert resp.status_code == 401
+
+
+async def test_release_quarantined_lot(authenticated_client: AsyncClient) -> None:
+    _, lot_id = await _api_lot(authenticated_client)
+    resp = await authenticated_client.post(
+        f"{BATCHES_URL}/{lot_id}/status", json={"status": "RELEASED"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["batch_status"] == "RELEASED"
+
+
+async def test_reject_quarantined_lot(authenticated_client: AsyncClient) -> None:
+    _, lot_id = await _api_lot(authenticated_client)
+    resp = await authenticated_client.post(
+        f"{BATCHES_URL}/{lot_id}/status", json={"status": "REJECTED"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["batch_status"] == "REJECTED"
+
+
+async def test_recall_released_lot(authenticated_client: AsyncClient) -> None:
+    _, lot_id = await _api_lot(authenticated_client, batch_status="RELEASED")
+    resp = await authenticated_client.post(
+        f"{BATCHES_URL}/{lot_id}/status", json={"status": "RECALLED"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["batch_status"] == "RECALLED"
+
+
+async def test_illegal_transition_returns_409(authenticated_client: AsyncClient) -> None:
+    """QUARANTINE can't jump straight to RECALLED — only RELEASED/REJECTED."""
+    _, lot_id = await _api_lot(authenticated_client)
+    resp = await authenticated_client.post(
+        f"{BATCHES_URL}/{lot_id}/status", json={"status": "RECALLED"}
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INVALID_BATCH_TRANSITION"
+
+
+async def test_transition_out_of_terminal_state_returns_409(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A REJECTED lot is terminal — it can't be released."""
+    _, lot_id = await _api_lot(authenticated_client)
+    await authenticated_client.post(f"{BATCHES_URL}/{lot_id}/status", json={"status": "REJECTED"})
+    resp = await authenticated_client.post(
+        f"{BATCHES_URL}/{lot_id}/status", json={"status": "RELEASED"}
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INVALID_BATCH_TRANSITION"
+
+
+async def test_change_status_unknown_lot_returns_404(authenticated_client: AsyncClient) -> None:
+    resp = await authenticated_client.post(
+        f"{BATCHES_URL}/{uuid.uuid4()}/status", json={"status": "RELEASED"}
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "BATCH_NOT_FOUND"

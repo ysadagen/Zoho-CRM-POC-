@@ -11,14 +11,16 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useApiError } from '@/hooks/useApiError';
 import { ApiError } from '@/lib/api/errors';
 import type { Item } from '@/types/api.types';
+import { ItemType } from '@/types/enums';
 
-import { useCreateItem, useUpdateItem } from '../hooks/useItems';
+import { useCreateItem, useItemsList, useUpdateItem } from '../hooks/useItems';
 import {
   ITEM_UNITS,
   itemCreateSchema,
   itemEditSchema,
   type ItemCreateValues,
 } from '../item.schema';
+import { IngredientsEditor } from './IngredientsEditor';
 import { itemToEditValues, toCreatePayload, toUpdatePayload } from '../item.transform';
 import {
   DOSAGE_FORM_OPTIONS,
@@ -105,6 +107,7 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
     handleSubmit,
     setError,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<ItemCreateValues>({
     resolver: isCreate
@@ -118,6 +121,17 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
 
   const pending = createMut.isPending || updateMut.isPending;
   const currentType = watch('type');
+
+  // Ingredients can be picked from existing raw materials (unit auto-fetched).
+  // Only finished products show the ingredients editor, so only fetch then.
+  const rawMaterialsQuery = useItemsList(
+    { limit: 100, offset: 0, type: ItemType.RAW },
+    { enabled: currentType === ItemType.FINISHED },
+  );
+  const rawMaterials = (rawMaterialsQuery.data?.items ?? []).map((it) => ({
+    name: it.name,
+    unit: it.unit_of_measure,
+  }));
 
   const routeError = (error: unknown, scope: string): void => {
     if (error instanceof ApiError && error.isValidation() && error.field) {
@@ -299,14 +313,14 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
             </div>
             <Field
               label="Ingredients"
-              htmlFor="item-ingredients"
-              hint="List of ingredients"
+              htmlFor="item-ingredient-0"
+              hint="One row per ingredient — name, quantity and unit"
               error={errors.ingredients?.message}
             >
-              <Textarea
-                id="item-ingredients"
-                invalid={!!errors.ingredients}
-                {...register('ingredients')}
+              <IngredientsEditor
+                initialValue={watch('ingredients')}
+                rawMaterials={rawMaterials}
+                onChange={(json) => setValue('ingredients', json, { shouldDirty: true })}
               />
             </Field>
             {checkRow('is_prescription_required', 'Prescription required')}

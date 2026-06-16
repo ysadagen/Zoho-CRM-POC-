@@ -101,9 +101,27 @@ describe('movementParty', () => {
 });
 
 describe('toAdjustmentPayload', () => {
-  it('maps the form values straight through', () => {
+  it('maps the form values straight through, dropping a blank lot', () => {
     expect(
-      toAdjustmentPayload({ item_id: 'i1', direction: 'OUT', quantity: '5', remarks: 'Damaged units' }),
+      toAdjustmentPayload({
+        item_id: 'i1',
+        direction: 'OUT',
+        quantity: '5',
+        remarks: 'Damaged units',
+        batch_id: '',
+      }),
     ).toEqual({ item_id: 'i1', direction: 'OUT', quantity: '5', remarks: 'Damaged units' });
+  });
+
+  it('includes the chosen lot when set (#8)', () => {
+    expect(
+      toAdjustmentPayload({
+        item_id: 'i1',
+        direction: 'OUT',
+        quantity: '5',
+        remarks: 'Damaged units',
+        batch_id: 'b9',
+      }),
+    ).toMatchObject({ batch_id: 'b9' });
   });
 });

@@ -26,7 +26,7 @@ export const poCreateSchema = z.object({
 export type PoFormValues = z.infer<typeof poCreateSchema>;
 export type PoLineValues = z.infer<typeof lineSchema>;
 
-/* ---- Receive (one lot per line) — Backend §9.8, Phase 1C ---- */
+/* ---- Receive (one or more lots per line) — Backend §9.8, multi-lot (#10) ---- */
 
 const receiveLineSchema = z
   .object({
@@ -37,6 +37,13 @@ const receiveLineSchema = z
       .min(1, 'Batch number required')
       .max(64, 'Keep the batch number under 64 characters'),
     expiry_date: z.string().min(1, 'Expiry date required'),
+    // Quantity for this lot. A PO line split across lots must allocate its
+    // full quantity; the form seeds a single lot with the whole line qty.
+    quantity: z
+      .string()
+      .trim()
+      .min(1, 'Qty required')
+      .refine((v) => DECIMAL_RE.test(v) && Number(v) > 0, 'Qty must be greater than 0'),
     // Optional — blank means "not recorded".
     manufacturing_date: z.string(),
     storage_location: z.string().trim().max(120, 'Keep the location under 120 characters'),

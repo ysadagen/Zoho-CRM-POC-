@@ -1,7 +1,7 @@
 import type { BadgeVariant } from '@/components/ui/Badge';
 import type { StockChipVariant } from '@/components/ui/StockChip';
 import { formatQuantity } from '@/lib/format';
-import type { Item, SalesOrder, SalesOrderCreateRequest } from '@/types/api.types';
+import type { Batch, Item, SalesOrder, SalesOrderCreateRequest } from '@/types/api.types';
 import { SalesOrderStatus } from '@/types/enums';
 
 import type { SoFormValues } from './so.schema';
@@ -24,6 +24,7 @@ export function toSoCreatePayload(values: SoFormValues): SalesOrderCreateRequest
         quantity: line.quantity,
       };
       if (line.unit_price) out.unit_price = line.unit_price;
+      if (line.batch_id) out.batch_id = line.batch_id;
       return out;
     }),
   };
@@ -67,6 +68,28 @@ export function hasShortLine(lines: SoFormValues['items'], items: Map<string, It
     if (!item) return false;
     return Number(line.quantity || '0') > Number(item.stock_quantity);
   });
+}
+
+/**
+ * Group an item's *shippable* lots (in stock, not expired) by item_id, for the
+ * SO line "Ship from lot" picker (#9). Earliest-expiry first so the listing
+ * follows FEFO order. `asOf` defaults to today (ISO yyyy-mm-dd).
+ */
+export function shippableLotsByItem(
+  batches: Batch[],
+  asOf: string = new Date().toISOString().slice(0, 10),
+): Map<string, Batch[]> {
+  const byItem = new Map<string, Batch[]>();
+  for (const lot of batches) {
+    if (Number(lot.quantity) <= 0 || lot.expiry_date < asOf) continue;
+    const list = byItem.get(lot.item_id) ?? [];
+    list.push(lot);
+    byItem.set(lot.item_id, list);
+  }
+  for (const list of byItem.values()) {
+    list.sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
+  }
+  return byItem;
 }
 
 export interface ShipDelta {

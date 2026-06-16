@@ -27,7 +27,7 @@ export function NeedsAttention(): JSX.Element {
         title="Needs Attention"
         sub="Items below their minimum threshold"
         action={
-          <ButtonLink to={`${routes.items}?status=low`} variant="ghost" size="sm">
+          <ButtonLink to={`${routes.items}?status=attention`} variant="ghost" size="sm">
             All →
           </ButtonLink>
         }

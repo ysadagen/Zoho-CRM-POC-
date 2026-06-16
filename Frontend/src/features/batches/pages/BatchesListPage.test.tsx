@@ -66,6 +66,25 @@ describe('BatchesListPage', () => {
     expect(screen.getAllByText('Released').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('recalls a released lot through the QC action (#7)', async () => {
+    let body: { status?: string } | undefined;
+    server.use(
+      ...handlers(),
+      http.post(`${BASE}/batches/b1/status`, async ({ request }) => {
+        body = (await request.json()) as typeof body;
+        return HttpResponse.json({ ...BATCHES[0], batch_status: 'RECALLED' });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<BatchesListPage />);
+    await screen.findByText('LOT-A');
+
+    // A RELEASED lot offers a single "Recall" QC action.
+    await user.click(screen.getByRole('button', { name: 'Recall' }));
+    await waitFor(() => expect(body?.status).toBe('RECALLED'));
+    expect(await screen.findByText('Lot LOT-A recalled.')).toBeInTheDocument();
+  });
+
   it('forwards the status filter to the server', async () => {
     const urls: URL[] = [];
     server.use(...handlers((url) => urls.push(url)));

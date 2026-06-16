@@ -929,6 +929,174 @@ funcs). Frontend is fully aligned to `../Backend/docs/Backend_Reference.md`.
 
 ---
 
+## Feedback round 2 — pharma UX (Batch 1: fast, safe wins) ✅ SHIPPED (2026-06-15)
+
+From operator feedback (12 items across notes + annotated screenshots). Batch 1
+delivers the low-risk, high-visibility frontend wins; the deeper batch-workflow
+items (item delete, QC status transitions, adjustment-with-batch, SO batch
+selection, multi-lot receive, structured-ingredient *input*) are Batch 2/3.
+
+- **Ingredients readable** — `parseIngredients` turns the finished-product
+  `ingredients` JSON into readable lines on `ItemDetailPage` (falls back to raw
+  text if it isn't JSON).
+- **SO line unit price auto-fills** from the selected item's catalog price
+  (keeps item/SO price consistent; still editable).
+- **Batch record unit cost auto-fills** from the item's price.
+- **Dashboard "Recent Stock Movements"** item names are now links to item detail.
+- **Required-field `*`** verified already present on the vendor/customer/item/
+  batch forms (Field `required`) — no change needed.
+
+**Verification:** `npm run lint` clean, `tsc -b` clean, **309 tests pass**,
+coverage 95.3% stmts (exit 0).
+
+## Feedback round 2 — Batch 2: multi-lot receive (#10) ✅ SHIPPED (2026-06-15)
+
+A PO line can now be received as **several lots** (different batch numbers /
+expiries arriving in one shipment), not just one.
+
+- `ReceivePoModal` rewritten on `useFieldArray`: each PO line shows its lot
+  row(s), an **Add lot** button, and a **Remove lot** button (when >1). A live
+  **"Allocated X / Y"** helper turns red and the **Confirm receive** button is
+  disabled until the lots' quantities allocate the full line quantity (mirrors
+  the SO live-stock §5 pattern). Uses `useWatch` for reliable field-array
+  reactivity.
+- Each lot row gains a **Quantity** field; a single lot is seeded with the full
+  line quantity (the common case — unchanged UX), so existing single-lot
+  receives keep working.
+- `po.transform`: `receiveDefaults` seeds the lot quantity; `toReceivePayload`
+  sends per-lot `quantity`; new `emptyReceiveLot(itemId)` for "Add lot".
+- Backend contract (matched): `PurchaseOrderReceiveLine.quantity` optional —
+  a single lot may omit it (whole line); split lines must sum to the line qty
+  (422 `RECEIVE_QUANTITY_MISMATCH`), duplicate batch per item → 409
+  `DUPLICATE_BATCH`.
+
+**Verification:** `tsc -b` clean, `eslint` clean, **312 tests pass** (3 new),
+coverage 95.31% (`po.transform.ts` 100%). Backend: **257 pass** (4 new),
+ruff + mypy clean.
+
+---
+
+## Feedback round 2 — Batch 2: SO batch selection #9 (+ #6) ✅ SHIPPED (2026-06-15)
+
+A sales-order line can now name the **lot it ships from** — and an item's
+Excel-imported stock becomes shippable by recording an opening-balance lot and
+selecting it (#6).
+
+- New **"Ship from lot"** column on the SO create line editor (`SoLineItemsEditor`):
+  a Select defaulting to **Auto (FEFO)**, populated from the item's *shippable*
+  lots (in stock, non-expired, earliest-expiry first). Disabled until an item is
+  picked; cleared automatically when the item changes (lots are item-specific).
+- `so.transform`: new `shippableLotsByItem(batches, asOf?)`; `toSoCreatePayload`
+  carries `batch_id` when chosen. `so.schema` line gains `batch_id` (blank = FEFO).
+- Backend contract (matched): line `batch_id` optional; blank → **FEFO,
+  unchanged** (all prior ship tests stay green — non-breaking). Set → ship from
+  that exact lot. Create validates existence + item-match (`404 BATCH_NOT_FOUND`,
+  `422 BATCH_ITEM_MISMATCH`); ship enforces stock/expiry
+  (`409 INSUFFICIENT_STOCK` / `BATCH_NOT_SHIPPABLE`).
+
+**Verification:** `tsc -b` clean, `eslint` clean, `build` clean, **315 tests
+pass** (3 new), coverage 95.34% (`so.transform.ts` 100% lines). Backend:
+**263 pass** (6 new), migration `a3f9c1d27e54` reversible, ruff + mypy clean.
+
+---
+
+**Batch 3 carry-over (was Batch 2 next):**
+
+---
+
+## Feedback round 2 — Batch 3: delete · QC · adjustment-lot · ingredients ✅ SHIPPED (2026-06-15)
+
+The remaining feedback set, all non-breaking and TDD:
+
+- **#1 Item soft-delete** — `ItemDetailPage` gains a **Deactivate** button +
+  danger confirm modal → `DELETE /items/{id}` (`useDeleteItem`); navigates back
+  with a toast. Inactive items drop out of the default list (Backend filter).
+- **#7 QC status transitions** — `BatchesTable` gains per-row **Release / Reject
+  / Recall** actions (only the legal ones for the lot's status) →
+  `POST /batches/{id}/status` (`useChangeBatchStatus`); recall/reject remove the
+  lot from shipping.
+- **#8 Adjustment targeting a lot** — `ManualAdjustmentModal` gains an optional
+  **Lot** picker populated from the item's lots; `batch_id` flows to the payload
+  so the lot quantity moves with the item total.
+- **#2 Structured ingredient input** — new `IngredientsEditor` (repeatable
+  name/qty/unit rows) replaces the free-text ingredients box on the item form;
+  serializes to the JSON string the Backend stores (`serializeIngredients`),
+  round-tripping with the detail-page renderer. Legacy free text is preserved as
+  the first row.
+
+**Verification:** `tsc -b` clean, `eslint` clean, `build` clean, **326 tests
+pass** (+10), coverage 95.41%. Backend: **280 pass** (+17), ruff + mypy clean.
+
+---
+
+**Batch 3 (planned, decisions resolved from the PDF):** item soft-delete; QC
+status transitions (release/reject/recall) + enforce RELEASED-on-ship; manual
+adjustment with batch selection (updates the lot); SO line **batch selection**
+(pick lot / create one when short); **multi-lot receive** (a PO line splits into
+many lots); structured ingredient *input*; opening-balance batching for
+Excel-imported stock. These are the backend-touching, batch-model-maturation
+work (Phase 2 territory).
+
+---
+
+## Feedback round 3 — Items "All →" filter + ingredient picker ✅ SHIPPED (2026-06-16)
+
+Two genuine, code-rooted bugs from the testing team's annotated PDF.
+
+**1. Dashboard "Needs Attention → All →" showed "No items found" (pages 1 & 3).**
+Two compounding causes:
+- The panel lists items that are `LOW_STOCK` **or** `NO_STOCK` (the screenshot's
+  items were all 0-stock = `NO_STOCK`), but the link went to `?status=low`
+  (`LOW_STOCK` only) — excluding the very items it showed.
+- The Items page filtered `status` **client-side over only the loaded 25 rows**,
+  while the pager showed the server's *unfiltered* total → "No items found /
+  1-25 of 31".
+
+Fix — status is now a **real server filter** (needs the new Backend `status`
+query param, logged in `../Backend/execution.md` Phase 1J):
+- `items.api.ts`: `ListItemsParams.statuses?: ItemStatus[]`, sent as repeated
+  `status` keys via axios `paramsSerializer: { indexes: null }`.
+- `item.transform.ts`: `STATUS_FILTER_TO_STATUSES` maps the segmented value →
+  bucket(s); new `attention` = `[LOW_STOCK, NO_STOCK]`.
+- `ItemsToolbar`: new **Attention** segment (the dashboard deep-link target).
+- `ItemsListPage`: passes `statuses` to the query (removed client-side
+  filtering), resets offset when status changes — so rows **and** the pager
+  total are now correct across the whole catalog.
+- `NeedsAttention`: "All →" now deep-links to `?status=attention`.
+
+**2. Add-Item ingredients should be picked from raw materials (page 2).**
+`IngredientsEditor` ingredient name is now a **combobox over the catalog's raw
+materials** (`<datalist>`): pick one and its **unit is auto-fetched** from the
+item; a free-text name not in the catalog is still accepted (and its unit typed
+manually). `ItemFormDrawer` fetches RAW items (`useItemsList(..., {enabled})`,
+only when type=FINISHED) and feeds them in. Output JSON is unchanged, so it
+round-trips with the detail-page renderer (`parseIngredients`).
+
+**Files touched:** `features/items/api/items.api.ts`,
+`features/items/hooks/useItems.ts`, `features/items/item.transform.ts`,
+`features/items/components/{ItemsToolbar,IngredientsEditor,ItemFormDrawer}.tsx`,
+`features/items/pages/ItemsListPage.tsx`,
+`features/dashboard/components/NeedsAttention.tsx` (+ their co-located tests).
+
+**How to test (you):** Backend running (with the Phase 1J status filter) and a
+mix of in-stock / low / out-of-stock items.
+```powershell
+npm run dev      # log in
+```
+1. **Dashboard → Needs Attention → All →** lands on Items with the **Attention**
+   filter active, listing exactly the low + out-of-stock items (no longer
+   "No items found"); the pager total matches.
+2. **Items toolbar**: OK / Low / Out / Attention now filter server-side — the
+   row list and the "N of M" pager agree, across all pages.
+3. **+ Add Item → Finished product → Ingredients**: the name field suggests raw
+   materials; picking one auto-fills its unit; a custom name is still allowed.
+
+**Verification:** `npm run verify` (lint + build) clean, **334 tests pass**
+(+8), `npm run test:coverage` thresholds hold. Backend `pytest` 31 item tests
+pass (+3).
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.

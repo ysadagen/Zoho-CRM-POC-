@@ -81,10 +81,13 @@ def _line(
     *,
     quantity: str = "1",
     unit_price: str | None = "100.00",
+    batch_id: str | None = None,
 ) -> dict[str, object]:
     body: dict[str, object] = {"item_id": item_id, "quantity": quantity}
     if unit_price is not None:
         body["unit_price"] = unit_price
+    if batch_id is not None:
+        body["batch_id"] = batch_id
     return body
 
 
@@ -798,3 +801,187 @@ async def test_ship_rejects_unbatched_stock(
     assert Decimal(str(lots["ONLY"]["quantity"])) == Decimal("30")
     so = (await authenticated_client.get(f"{SALES_ORDERS_URL}/{created.json()['id']}")).json()
     assert so["status"] == "DRAFT"
+
+
+# ---------------------------------------------------------------------------
+# SO batch selection (#9) — ship from an operator-chosen lot
+# ---------------------------------------------------------------------------
+
+
+async def test_create_so_persists_chosen_batch(
+    authenticated_client: AsyncClient,
+) -> None:
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, quantity="100")
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_id, quantity="10", unit_price="1", batch_id=lot_id)]
+        ),
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["items"][0]["batch_id"] == lot_id
+
+
+async def test_create_so_unknown_batch_returns_404(
+    authenticated_client: AsyncClient,
+) -> None:
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id,
+            [_line(item_id, quantity="10", unit_price="1", batch_id=str(uuid.uuid4()))],
+        ),
+    )
+    assert created.status_code == 404
+    assert created.json()["error"]["code"] == "BATCH_NOT_FOUND"
+
+
+async def test_create_so_batch_for_wrong_item_returns_422(
+    authenticated_client: AsyncClient,
+) -> None:
+    customer_id = await _create_customer(authenticated_client)
+    item_a = await _create_item(authenticated_client, stock="100")
+    item_b = await _create_item(authenticated_client, stock="100")
+    other_lot = await _lot(authenticated_client, item_b, quantity="100")
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_a, quantity="10", unit_price="1", batch_id=other_lot)]
+        ),
+    )
+    assert created.status_code == 422
+    assert created.json()["error"]["code"] == "BATCH_ITEM_MISMATCH"
+
+
+async def test_ship_so_consumes_chosen_lot_overriding_fefo(
+    authenticated_client: AsyncClient,
+) -> None:
+    """The chosen lot ships even when an earlier-expiry lot exists — FEFO
+    would have picked the other one, so this proves the override."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="200")
+    await _lot(
+        authenticated_client, item_id, quantity="100", batch_number="LOT-EARLY", expiry="2030-01-01"
+    )
+    chosen = await _lot(
+        authenticated_client, item_id, quantity="100", batch_number="LOT-LATE", expiry="2035-01-01"
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_id, quantity="30", unit_price="1", batch_id=chosen)]
+        ),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 200, resp.text
+
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["LOT-LATE"]["quantity"])) == Decimal("70")  # chosen consumed
+    assert Decimal(str(lots["LOT-EARLY"]["quantity"])) == Decimal("100")  # FEFO lot untouched
+
+    ledger = (
+        await authenticated_client.get(STOCK_MOVEMENTS_URL, params={"item_id": item_id})
+    ).json()
+    out = [m for m in ledger["items"] if m["direction"] == "OUT"]
+    assert len(out) == 1
+    assert out[0]["batch_id"] == chosen
+
+
+async def test_ship_so_chosen_lot_insufficient_returns_409(
+    authenticated_client: AsyncClient,
+) -> None:
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    small = await _lot(authenticated_client, item_id, quantity="20", batch_number="SMALL")
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_id, quantity="50", unit_price="1", batch_id=small)]
+        ),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["SMALL"]["quantity"])) == Decimal("20")  # rolled back
+
+
+async def test_ship_so_chosen_lot_expired_returns_409(
+    authenticated_client: AsyncClient,
+) -> None:
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    expired = await _lot(
+        authenticated_client, item_id, quantity="100", batch_number="OLD", expiry="2020-01-01"
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_id, quantity="10", unit_price="1", batch_id=expired)]
+        ),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "BATCH_NOT_SHIPPABLE"
+
+
+# ---------------------------------------------------------------------------
+# QC status ↔ ship (#7) — recalled/rejected lots stop being shippable
+# ---------------------------------------------------------------------------
+
+
+async def _recall(client: AsyncClient, lot_id: str) -> None:
+    await client.post(f"/api/v1/batches/{lot_id}/status", json={"status": "RELEASED"})
+    await client.post(f"/api/v1/batches/{lot_id}/status", json={"status": "RECALLED"})
+
+
+async def test_ship_so_skips_recalled_lot_via_fefo(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A recalled lot is no longer shippable — FEFO skips it; if it's the only
+    lot the ship fails INSUFFICIENT_STOCK and nothing is consumed."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, quantity="100", batch_number="REC")
+    await _recall(authenticated_client, lot_id)
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="10", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["REC"]["quantity"])) == Decimal("100")  # untouched
+
+
+async def test_ship_so_chosen_recalled_lot_returns_409(
+    authenticated_client: AsyncClient,
+) -> None:
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, quantity="100", batch_number="REC")
+    await _recall(authenticated_client, lot_id)
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_id, quantity="10", unit_price="1", batch_id=lot_id)]
+        ),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "BATCH_NOT_SHIPPABLE"

@@ -15,7 +15,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-const ITEMS = [{ id: 'i1', sku: 'RAW-1', name: 'Raw Steel', unit_of_measure: 'kg' }];
+const ITEMS = [{ id: 'i1', sku: 'RAW-1', name: 'Raw Steel', unit_of_measure: 'kg', unit_price: '750' }];
 
 function itemsOk() {
   return http.get(`${BASE}/items`, () =>
@@ -47,6 +47,8 @@ describe('BatchFormDrawer', () => {
     renderWithProviders(<BatchFormDrawer onClose={onClose} onCreated={onCreated} />);
 
     await fillRequired(user);
+    // Selecting the item auto-fills the lot's unit cost from its catalog price.
+    expect(screen.getByLabelText('Unit cost')).toHaveValue(750);
     await user.click(screen.getByRole('button', { name: 'Record lot' }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('b1'));

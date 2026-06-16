@@ -373,3 +373,96 @@ async def test_list_movements_filter_by_date_range(
 
     assert inside.json()["total"] >= 1
     assert outside.json()["total"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Adjustment targeting a specific lot (#8)
+# ---------------------------------------------------------------------------
+
+BATCHES_URL = "/api/v1/batches"
+
+
+async def _lot(client: AsyncClient, item_id: str, *, qty: str, batch_number: str = "LOT-1") -> str:
+    resp = await client.post(
+        BATCHES_URL,
+        json={
+            "item_id": item_id,
+            "batch_number": batch_number,
+            "expiry_date": "2035-01-01",
+            "quantity": qty,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return str(resp.json()["id"])
+
+
+async def _lot_qty(client: AsyncClient, lot_id: str) -> Decimal:
+    return Decimal(str((await client.get(f"{BATCHES_URL}/{lot_id}")).json()["quantity"]))
+
+
+async def test_adjustment_out_with_batch_decrements_lot_and_item(
+    authenticated_client: AsyncClient,
+) -> None:
+    item_id = await _create_item_with_stock(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, qty="100")
+
+    resp = await authenticated_client.post(
+        ADJUSTMENTS_URL,
+        json=_adjustment_payload(item_id, direction="OUT", quantity="30", batch_id=lot_id),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["batch_id"] == lot_id
+    assert await _lot_qty(authenticated_client, lot_id) == Decimal("70")
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("70")
+
+
+async def test_adjustment_in_with_batch_increments_lot_and_item(
+    authenticated_client: AsyncClient,
+) -> None:
+    item_id = await _create_item_with_stock(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, qty="100")
+
+    resp = await authenticated_client.post(
+        ADJUSTMENTS_URL,
+        json=_adjustment_payload(item_id, direction="IN", quantity="20", batch_id=lot_id),
+    )
+    assert resp.status_code == 201, resp.text
+    assert await _lot_qty(authenticated_client, lot_id) == Decimal("120")
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("120")
+
+
+async def test_adjustment_batch_for_wrong_item_returns_422(
+    authenticated_client: AsyncClient,
+) -> None:
+    item_a = await _create_item_with_stock(authenticated_client, stock="100", sku="ITM-A8")
+    item_b = await _create_item_with_stock(authenticated_client, stock="100", sku="ITM-B8")
+    lot_b = await _lot(authenticated_client, item_b, qty="100")
+
+    resp = await authenticated_client.post(
+        ADJUSTMENTS_URL,
+        json=_adjustment_payload(item_a, direction="OUT", quantity="10", batch_id=lot_b),
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "BATCH_ITEM_MISMATCH"
+
+
+async def test_adjustment_out_with_batch_insufficient_returns_409(
+    authenticated_client: AsyncClient,
+) -> None:
+    """The lot has less than the OUT amount → 409, nothing changes (even though
+    the item aggregate would have been sufficient)."""
+    item_id = await _create_item_with_stock(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, qty="20")
+
+    resp = await authenticated_client.post(
+        ADJUSTMENTS_URL,
+        json=_adjustment_payload(item_id, direction="OUT", quantity="50", batch_id=lot_id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+    assert await _lot_qty(authenticated_client, lot_id) == Decimal("20")
+    item = (await authenticated_client.get(f"{ITEMS_URL}/{item_id}")).json()
+    assert Decimal(str(item["stock_quantity"])) == Decimal("100")

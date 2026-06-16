@@ -37,6 +37,9 @@ class SalesOrderLineCreate(BaseModel):
     to the item's catalog ``unit_price`` (the list price) — Phase 1
     has no per-customer pricing table; every customer pays the list
     price unless overridden per line.
+
+    ``batch_id`` is optional (#9). When given, the line ships from that
+    exact lot; when omitted, ship picks lots First-Expiry-First-Out.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -44,6 +47,7 @@ class SalesOrderLineCreate(BaseModel):
     item_id: uuid.UUID
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     unit_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    batch_id: uuid.UUID | None = None
 
 
 class SalesOrderCreate(BaseModel):
@@ -64,6 +68,7 @@ class SalesOrderLineRead(BaseModel):
 
     id: uuid.UUID
     item_id: uuid.UUID
+    batch_id: uuid.UUID | None
     quantity: Decimal
     unit_price: Decimal
     line_total: Decimal

@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.batch import Batch, BatchStatus
+from app.models.batch import SHIPPABLE_BATCH_STATUSES, Batch, BatchStatus
 
 
 class BatchRepository:
@@ -26,6 +26,13 @@ class BatchRepository:
 
     async def get_by_id(self, batch_id: uuid.UUID) -> Batch | None:
         stmt = select(Batch).where(Batch.id == batch_id)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def get_by_id_for_update(self, batch_id: uuid.UUID) -> Batch | None:
+        """Fetch one lot **locked** for update — for shipping a specific,
+        operator-chosen lot (#9). Mirrors the row-lock used by FEFO
+        consumption so concurrent ships of the same lot serialise."""
+        stmt = select(Batch).where(Batch.id == batch_id).with_for_update()
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
     async def get_by_item_and_number(self, item_id: uuid.UUID, batch_number: str) -> Batch | None:
@@ -75,8 +82,9 @@ class BatchRepository:
         For FEFO consumption (SO ship). ``with_for_update`` locks the lot rows
         so concurrent ships of the same item serialise and can't over-consume.
         Excludes expired (``expiry_date < as_of``) and depleted (``quantity = 0``)
-        lots. ``batch_status`` is intentionally **not** filtered — QC-status
-        eligibility (RELEASED-only) arrives with the QC workflow in a later phase.
+        lots, and lots whose QC status isn't shippable (REJECTED / RECALLED /
+        EXPIRED) — see :data:`SHIPPABLE_BATCH_STATUSES` (#7). QUARANTINE stays
+        eligible; gating sales on RELEASED-only is a separate policy decision.
         """
         stmt = (
             select(Batch)
@@ -84,6 +92,7 @@ class BatchRepository:
                 Batch.item_id == item_id,
                 Batch.expiry_date >= as_of,
                 Batch.quantity > 0,
+                Batch.batch_status.in_(SHIPPABLE_BATCH_STATUSES),
             )
             .order_by(Batch.expiry_date.asc(), Batch.created_at.asc())
             .with_for_update()

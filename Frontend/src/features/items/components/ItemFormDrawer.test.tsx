@@ -16,6 +16,13 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+/** The drawer fetches RAW items (for the ingredient picker) when type=FINISHED. */
+function rawItemsHandler(items: unknown[] = []) {
+  return http.get(`${BASE}/items`, () =>
+    HttpResponse.json({ items, total: items.length, limit: 100, offset: 0 }),
+  );
+}
+
 const EXISTING: Item = {
   id: 'i1',
   sku: 'BOT-1L',
@@ -75,6 +82,7 @@ describe('ItemFormDrawer — create', () => {
   it('reveals finished-product fields on type change and sends the detail block', async () => {
     let body: unknown;
     server.use(
+      rawItemsHandler(),
       http.post(`${BASE}/items`, async ({ request }) => {
         body = await request.json();
         return HttpResponse.json(
@@ -110,6 +118,46 @@ describe('ItemFormDrawer — create', () => {
         dosage_form: 'TABLET',
         is_prescription_required: true,
       },
+    });
+  });
+
+  it('lets ingredients be picked from raw materials with the unit auto-fetched', async () => {
+    let body: unknown;
+    server.use(
+      rawItemsHandler([
+        { id: 'r1', sku: 'RAW-LAC', name: 'Lactose', type: 'RAW', unit_of_measure: 'g' },
+      ]),
+      http.post(`${BASE}/items`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          { id: 'f2', sku: 'TAB-1', name: 'Tablet', created_at: 'now' },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ItemFormDrawer mode="create" onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await user.selectOptions(screen.getByLabelText('Type'), 'FINISHED');
+    // The raw material is available to pick from the ingredient combobox (a
+    // datalist option, so hidden in the a11y tree); awaiting it also lets the
+    // raw-materials fetch resolve before we rely on the unit auto-fill.
+    expect(await screen.findByRole('option', { name: 'Lactose', hidden: true })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('SKU'), 'TAB-1');
+    await user.type(screen.getByLabelText('Name'), 'Tablet');
+    await user.type(screen.getByLabelText('Category'), 'Tablets');
+    await user.type(screen.getByLabelText('Unit price'), '10');
+    // Picking the raw material auto-fetches its unit (g).
+    await user.type(screen.getByLabelText('Ingredient name 1'), 'Lactose');
+    expect(screen.getByLabelText('Ingredient unit 1')).toHaveValue('g');
+    await user.type(screen.getByLabelText('Ingredient quantity 1'), '200');
+    await user.click(screen.getByRole('button', { name: 'Create item' }));
+
+    await waitFor(() => expect(body).toBeTruthy());
+    expect(body).toMatchObject({
+      type: 'FINISHED',
+      finished_detail: { ingredients: JSON.stringify([{ name: 'Lactose', qty: '200', unit: 'g' }]) },
     });
   });
 
@@ -182,6 +230,7 @@ describe('ItemFormDrawer — edit', () => {
   it('prefills, patches PATCH-safe fields and toasts success', async () => {
     let body: unknown;
     server.use(
+      rawItemsHandler(),
       http.patch(`${BASE}/items/i1`, async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ ...EXISTING, name: 'Renamed Bottle' });

@@ -36,16 +36,33 @@ export function toPoCreatePayload(values: PoFormValues): PurchaseOrderCreateRequ
   return payload;
 }
 
-/** Seed the receive form: one blank lot row per PO line (item_id prefilled). */
+/**
+ * Seed the receive form: one lot per PO line, with the lot quantity
+ * prefilled to the full line quantity (the common single-lot case). The
+ * operator can split a line by adding more lots and re-allocating.
+ */
 export function receiveDefaults(po: PurchaseOrder): PoReceiveValues {
   return {
     lines: po.items.map((line) => ({
       item_id: line.item_id,
       batch_number: '',
       expiry_date: '',
+      quantity: line.quantity,
       manufacturing_date: '',
       storage_location: '',
     })),
+  };
+}
+
+/** A blank extra lot for a given PO line (item), used by "Add lot". */
+export function emptyReceiveLot(itemId: string): PoReceiveValues['lines'][number] {
+  return {
+    item_id: itemId,
+    batch_number: '',
+    expiry_date: '',
+    quantity: '',
+    manufacturing_date: '',
+    storage_location: '',
   };
 }
 
@@ -57,6 +74,7 @@ export function toReceivePayload(values: PoReceiveValues): PurchaseOrderReceiveR
         item_id: line.item_id,
         batch_number: line.batch_number,
         expiry_date: line.expiry_date,
+        quantity: line.quantity,
       };
       if (line.manufacturing_date) out.manufacturing_date = line.manufacturing_date;
       if (line.storage_location) out.storage_location = line.storage_location;

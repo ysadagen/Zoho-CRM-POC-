@@ -82,6 +82,54 @@ describe('PurchaseOrderDetailPage', () => {
     expect(await screen.findByText('Stock received — lots created.')).toBeInTheDocument();
   });
 
+  it('splits a line across multiple lots and posts each lot (#10)', async () => {
+    let body: { lines: Array<Record<string, string>> } | undefined;
+    server.use(
+      ...commonHandlers(),
+      http.get(`${BASE}/purchase-orders/po1`, () => HttpResponse.json(PO_DRAFT)),
+      http.post(`${BASE}/purchase-orders/po1/receive`, async ({ request }) => {
+        body = (await request.json()) as typeof body;
+        return HttpResponse.json({ ...PO_DRAFT, status: 'RECEIVED', received_date: '2026-05-12' });
+      }),
+    );
+    seedSession();
+    const user = userEvent.setup();
+    renderWithProviders(<AppRouter />, { route: '/purchase-orders/po1' });
+    await screen.findByText('PO-202605-000001');
+
+    await user.click(screen.getByRole('button', { name: 'Receive' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Receive PO-202605-000001' });
+
+    // Lot 1 (qty seeded to the full 100) — name it and cut it to 60.
+    await user.type(within(dialog).getByLabelText('Batch number'), 'LOT-A');
+    fireEvent.change(within(dialog).getByLabelText('Expiry date'), { target: { value: '2030-01-01' } });
+    const qty1 = within(dialog).getByLabelText('Quantity');
+    await user.clear(qty1);
+    await user.type(qty1, '60');
+
+    // Add a second lot → allocation is short (60/100), Confirm disabled.
+    await user.click(within(dialog).getByRole('button', { name: 'Add lot' }));
+    expect(within(dialog).getByText('Allocated 60 / 100')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Confirm receive' })).toBeDisabled();
+
+    // Fill lot 2 with the remaining 40 → allocation balances, Confirm enables.
+    const [, batch2] = within(dialog).getAllByLabelText('Batch number');
+    const [, expiry2] = within(dialog).getAllByLabelText('Expiry date');
+    const [, qty2] = within(dialog).getAllByLabelText('Quantity');
+    await user.type(batch2!, 'LOT-B');
+    fireEvent.change(expiry2!, { target: { value: '2031-06-01' } });
+    await user.type(qty2!, '40');
+
+    expect(within(dialog).getByText('Allocated 100 / 100')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm receive' }));
+
+    await waitFor(() => expect(body).toBeTruthy());
+    expect(body?.lines).toEqual([
+      expect.objectContaining({ item_id: 'i1', batch_number: 'LOT-A', quantity: '60' }),
+      expect.objectContaining({ item_id: 'i1', batch_number: 'LOT-B', quantity: '40' }),
+    ]);
+  });
+
   it('shows a page error with the Request ID when the PO fails to load', async () => {
     server.use(
       ...commonHandlers(),

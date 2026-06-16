@@ -62,6 +62,50 @@ describe('ManualAdjustmentModal', () => {
     expect(await screen.findByText('Adjustment recorded.')).toBeInTheDocument();
   });
 
+  it('adjusts a chosen lot — sends batch_id (#8)', async () => {
+    let body: { batch_id?: string } | undefined;
+    server.use(
+      ITEMS_OK,
+      http.get(`${BASE}/batches`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: 'lot-1',
+              item_id: 'i1',
+              batch_number: 'LOT-1',
+              quantity: '40',
+              expiry_date: '2035-01-01',
+              batch_status: 'QUARANTINE',
+            },
+          ],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      http.post(`${BASE}/stock-movements/adjustments`, async ({ request }) => {
+        body = (await request.json()) as typeof body;
+        return HttpResponse.json({ id: 'm-new', item_id: 'i1', direction: 'OUT' }, { status: 201 });
+      }),
+    );
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<ManualAdjustmentModal onClose={onClose} />);
+
+    await screen.findByRole('option', { name: 'RAW-1 — Raw Steel' });
+    await user.selectOptions(screen.getByLabelText('Item'), 'i1');
+    // The lot picker populates from the selected item's lots.
+    await screen.findByRole('option', { name: /LOT-1/ });
+    await user.selectOptions(screen.getByLabelText('Lot (optional)'), 'lot-1');
+    await user.selectOptions(screen.getByLabelText('Direction'), 'OUT');
+    await user.type(screen.getByLabelText('Quantity'), '10');
+    await user.type(screen.getByLabelText('Reason note'), 'Damaged units in this lot');
+    await user.click(screen.getByRole('button', { name: 'Record adjustment' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(body?.batch_id).toBe('lot-1');
+  });
+
   it('surfaces INSUFFICIENT_STOCK as a danger toast with the Request ID', async () => {
     server.use(
       ITEMS_OK,

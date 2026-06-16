@@ -18,6 +18,7 @@ import type {
 
 import {
   createItem,
+  deleteItem,
   getItem,
   listItemMovements,
   listItems,
@@ -27,12 +28,16 @@ import {
 } from '../api/items.api';
 import { itemKeys } from '../items.keys';
 
-export function useItemsList(params: ListItemsParams): UseQueryResult<Paginated<Item>> {
+export function useItemsList(
+  params: ListItemsParams,
+  options?: { enabled?: boolean },
+): UseQueryResult<Paginated<Item>> {
   return useQuery({
     queryKey: itemKeys.list(params),
     queryFn: () => listItems(params),
     // Keep the previous page visible while the next loads (no flash of empty).
     placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -65,6 +70,17 @@ export function useUpdateItem(id: string): UseMutationResult<Item, unknown, Item
     mutationFn: (body: ItemUpdateRequest) => updateItem(id, body),
     onSuccess: (item) => {
       logger.info('items.update', { itemId: item.id, sku: item.sku });
+      void queryClient.invalidateQueries({ queryKey: itemKeys.all });
+    },
+  });
+}
+
+export function useDeleteItem(): UseMutationResult<void, unknown, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteItem(id),
+    onSuccess: (_data, id) => {
+      logger.info('items.delete', { itemId: id });
       void queryClient.invalidateQueries({ queryKey: itemKeys.all });
     },
   });

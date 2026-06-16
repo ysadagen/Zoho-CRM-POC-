@@ -283,6 +283,8 @@ export interface ManualAdjustmentRequest {
   direction: MovementDirection;
   quantity: string;
   remarks: string;
+  /** Optional lot to adjust; when set the lot quantity moves too (#8). */
+  batch_id?: string;
 }
 
 /* ============================================================
@@ -367,13 +369,19 @@ export interface PurchaseOrderCreateRequest {
   items: PurchaseOrderCreateLine[];
 }
 
-/** One lot's details supplied at receive time — one per PO line, by item_id. */
+/**
+ * One lot's details supplied at receive time, matched to a PO line by
+ * item_id. A line may be split across several lots — when it is, every lot
+ * carries a `quantity` and the lots' quantities sum to the PO line quantity.
+ * A single lot may omit `quantity` (the whole line quantity is used).
+ */
 export interface PurchaseOrderReceiveLine {
   item_id: string;
   batch_number: string;
   expiry_date: string;
   manufacturing_date?: string;
   storage_location?: string;
+  quantity?: string;
 }
 
 export interface PurchaseOrderReceiveRequest {
@@ -388,6 +396,8 @@ export interface SalesOrderItem {
   id: string;
   sales_order_id: string;
   item_id: string;
+  /** Operator-chosen lot to ship this line from; null = First-Expiry-First-Out (#9). */
+  batch_id: string | null;
   quantity: string;
   unit_price: string;
   line_total: string;
@@ -414,6 +424,8 @@ export interface SalesOrderCreateLine {
   item_id: string;
   quantity: string;
   unit_price?: string;
+  /** Optional lot to ship from; omit to let the Backend pick FEFO (#9). */
+  batch_id?: string;
 }
 
 export interface SalesOrderCreateRequest {

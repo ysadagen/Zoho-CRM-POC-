@@ -12,10 +12,33 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item import Item, ItemType
+from app.schemas.item import ItemStatus
+
+
+def _status_predicate(status: ItemStatus) -> ColumnElement[bool]:
+    """SQL mirror of the derived ``ItemRead.status`` rule.
+
+    The status is a *computed* field (never stored), so filtering by it has to
+    re-express the same branches in SQL. Keep this in lock-step with
+    ``ItemRead.status`` in ``app.schemas.item`` — the two must agree.
+    """
+    if status is ItemStatus.NO_STOCK:
+        return Item.stock_quantity <= 0
+    if status is ItemStatus.LOW_STOCK:
+        return and_(
+            Item.stock_quantity > 0,
+            Item.reorder_threshold.is_not(None),
+            Item.stock_quantity < Item.reorder_threshold,
+        )
+    # IN_STOCK — has stock and is at/above its threshold (or has none configured).
+    return and_(
+        Item.stock_quantity > 0,
+        or_(Item.reorder_threshold.is_(None), Item.stock_quantity >= Item.reorder_threshold),
+    )
 
 
 class ItemRepository:
@@ -42,17 +65,27 @@ class ItemRepository:
         item_type: ItemType | None = None,
         category: str | None = None,
         search: str | None = None,
+        statuses: list[ItemStatus] | None = None,
+        include_inactive: bool = False,
     ) -> tuple[list[Item], int]:
         """Return ``(items_page, total_matching)``.
 
         ``total`` reflects the full count after filters but before
         pagination — that's what the UI needs to render pager controls.
+        Soft-deleted items (``is_active = false``) are excluded unless
+        ``include_inactive`` is set. ``statuses`` filters by the *derived*
+        stock-health status — an item matches if it falls in **any** of the
+        requested buckets (so "needs attention" can ask for LOW + NO together).
         """
         filtered: Select[tuple[Item]] = select(Item)
+        if not include_inactive:
+            filtered = filtered.where(Item.is_active.is_(True))
         if item_type is not None:
             filtered = filtered.where(Item.type == item_type)
         if category is not None:
             filtered = filtered.where(Item.category == category)
+        if statuses:
+            filtered = filtered.where(or_(*(_status_predicate(s) for s in statuses)))
         if search:
             term = f"%{search.lower()}%"
             filtered = filtered.where(

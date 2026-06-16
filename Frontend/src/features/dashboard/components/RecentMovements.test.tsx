@@ -56,6 +56,8 @@ describe('RecentMovements', () => {
     renderWithProviders(<RecentMovements />);
 
     expect(await screen.findByText('Bottle 1L')).toBeInTheDocument();
+    // The item name links through to its detail page.
+    expect(screen.getByRole('link', { name: 'Bottle 1L' })).toHaveAttribute('href', '/items/i1');
     expect(screen.getByText('Sale Out')).toBeInTheDocument();
     expect(screen.getByText(/120 pcs/)).toBeInTheDocument();
     expect(screen.getByText('Sales order')).toBeInTheDocument();

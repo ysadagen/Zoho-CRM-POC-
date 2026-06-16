@@ -201,6 +201,15 @@ class SalesOrderItem(Base):
         nullable=False,
         index=True,
     )
+    # Optional operator-chosen lot to ship this line from (#9). NULL means
+    # "let the ship flow pick lots First-Expiry-First-Out" (the default,
+    # backward-compatible behaviour). When set, ship consumes this exact lot.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("batches.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
