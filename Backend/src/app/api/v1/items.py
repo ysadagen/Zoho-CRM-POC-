@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.item import ItemType
 from app.models.user import User
-from app.schemas.item import ItemCreate, ItemCreated, ItemList, ItemRead, ItemUpdate
+from app.schemas.item import ItemCreate, ItemCreated, ItemList, ItemRead, ItemStatus, ItemUpdate
 from app.services.item_service import ItemService
 
 router = APIRouter(prefix="/items", tags=["items"])
@@ -58,15 +58,18 @@ async def list_items(
     type: Annotated[ItemType | None, Query()] = None,
     category: Annotated[str | None, Query(max_length=64)] = None,
     search: Annotated[str | None, Query(max_length=255)] = None,
+    status: Annotated[list[ItemStatus] | None, Query()] = None,
     include_inactive: Annotated[bool, Query()] = False,
 ) -> ItemList:
     """Return a page of items, newest first.
 
-    Filters compose: ``type``, ``category``, and a case-insensitive
-    ``search`` over SKU and name. Soft-deleted (inactive) items are
-    excluded unless ``include_inactive=true``. ``total`` is the count
-    after filters but before pagination so the frontend can render
-    pager controls.
+    Filters compose: ``type``, ``category``, a case-insensitive ``search``
+    over SKU and name, and ``status`` (the derived stock-health bucket). The
+    ``status`` filter is repeatable — pass it more than once to match any of
+    several buckets (e.g. ``?status=LOW_STOCK&status=NO_STOCK`` for everything
+    that needs attention). Soft-deleted (inactive) items are excluded unless
+    ``include_inactive=true``. ``total`` is the count after filters but before
+    pagination so the frontend can render pager controls.
     """
     items, total = await ItemService(session).list_(
         limit=limit,
@@ -74,6 +77,7 @@ async def list_items(
         item_type=type,
         category=category,
         search=search,
+        statuses=status,
         include_inactive=include_inactive,
     )
     return ItemList(

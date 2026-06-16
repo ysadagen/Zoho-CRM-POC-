@@ -40,11 +40,17 @@ export function itemStatusBadge(status: ItemStatus): BadgeSpec {
   return STATUS_BADGE[status];
 }
 
-/** Maps the UI status segmented-filter value → the Backend ItemStatus it means. */
-export const STATUS_FILTER_TO_STATUS: Record<string, ItemStatus> = {
-  ok: ItemStatus.IN_STOCK,
-  low: ItemStatus.LOW_STOCK,
-  out: ItemStatus.NO_STOCK,
+/**
+ * Maps the UI status segmented-filter value → the Backend `ItemStatus` bucket(s)
+ * it means. These go to the server as a (repeatable) `status` filter, so the
+ * filter is correct across the whole catalog — not just the loaded page.
+ * `attention` is the dashboard "Needs Attention" view: low *or* out of stock.
+ */
+export const STATUS_FILTER_TO_STATUSES: Record<'ok' | 'low' | 'out' | 'attention', ItemStatus[]> = {
+  ok: [ItemStatus.IN_STOCK],
+  low: [ItemStatus.LOW_STOCK],
+  out: [ItemStatus.NO_STOCK],
+  attention: [ItemStatus.LOW_STOCK, ItemStatus.NO_STOCK],
 };
 
 export interface MovementSummary {

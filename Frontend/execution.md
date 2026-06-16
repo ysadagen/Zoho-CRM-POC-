@@ -1039,6 +1039,64 @@ work (Phase 2 territory).
 
 ---
 
+## Feedback round 3 — Items "All →" filter + ingredient picker ✅ SHIPPED (2026-06-16)
+
+Two genuine, code-rooted bugs from the testing team's annotated PDF.
+
+**1. Dashboard "Needs Attention → All →" showed "No items found" (pages 1 & 3).**
+Two compounding causes:
+- The panel lists items that are `LOW_STOCK` **or** `NO_STOCK` (the screenshot's
+  items were all 0-stock = `NO_STOCK`), but the link went to `?status=low`
+  (`LOW_STOCK` only) — excluding the very items it showed.
+- The Items page filtered `status` **client-side over only the loaded 25 rows**,
+  while the pager showed the server's *unfiltered* total → "No items found /
+  1-25 of 31".
+
+Fix — status is now a **real server filter** (needs the new Backend `status`
+query param, logged in `../Backend/execution.md` Phase 1J):
+- `items.api.ts`: `ListItemsParams.statuses?: ItemStatus[]`, sent as repeated
+  `status` keys via axios `paramsSerializer: { indexes: null }`.
+- `item.transform.ts`: `STATUS_FILTER_TO_STATUSES` maps the segmented value →
+  bucket(s); new `attention` = `[LOW_STOCK, NO_STOCK]`.
+- `ItemsToolbar`: new **Attention** segment (the dashboard deep-link target).
+- `ItemsListPage`: passes `statuses` to the query (removed client-side
+  filtering), resets offset when status changes — so rows **and** the pager
+  total are now correct across the whole catalog.
+- `NeedsAttention`: "All →" now deep-links to `?status=attention`.
+
+**2. Add-Item ingredients should be picked from raw materials (page 2).**
+`IngredientsEditor` ingredient name is now a **combobox over the catalog's raw
+materials** (`<datalist>`): pick one and its **unit is auto-fetched** from the
+item; a free-text name not in the catalog is still accepted (and its unit typed
+manually). `ItemFormDrawer` fetches RAW items (`useItemsList(..., {enabled})`,
+only when type=FINISHED) and feeds them in. Output JSON is unchanged, so it
+round-trips with the detail-page renderer (`parseIngredients`).
+
+**Files touched:** `features/items/api/items.api.ts`,
+`features/items/hooks/useItems.ts`, `features/items/item.transform.ts`,
+`features/items/components/{ItemsToolbar,IngredientsEditor,ItemFormDrawer}.tsx`,
+`features/items/pages/ItemsListPage.tsx`,
+`features/dashboard/components/NeedsAttention.tsx` (+ their co-located tests).
+
+**How to test (you):** Backend running (with the Phase 1J status filter) and a
+mix of in-stock / low / out-of-stock items.
+```powershell
+npm run dev      # log in
+```
+1. **Dashboard → Needs Attention → All →** lands on Items with the **Attention**
+   filter active, listing exactly the low + out-of-stock items (no longer
+   "No items found"); the pager total matches.
+2. **Items toolbar**: OK / Low / Out / Attention now filter server-side — the
+   row list and the "N of M" pager agree, across all pages.
+3. **+ Add Item → Finished product → Ingredients**: the name field suggests raw
+   materials; picking one auto-fills its unit; a custom name is still allowed.
+
+**Verification:** `npm run verify` (lint + build) clean, **334 tests pass**
+(+8), `npm run test:coverage` thresholds hold. Backend `pytest` 31 item tests
+pass (+3).
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.

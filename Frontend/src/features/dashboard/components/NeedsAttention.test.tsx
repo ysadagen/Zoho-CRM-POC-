@@ -58,6 +58,16 @@ describe('NeedsAttention', () => {
     expect(screen.queryByText('Healthy')).not.toBeInTheDocument();
   });
 
+  it('the "All →" link deep-links to the attention (low + out) items view', async () => {
+    server.use(http.get(`${BASE}/items`, () => itemsResponse([])));
+    renderWithProviders(<NeedsAttention />);
+
+    // Regression: it used to point at ?status=low, which hid the 0-stock
+    // (NO_STOCK) items the panel actually lists.
+    const link = await screen.findByRole('link', { name: /All/ });
+    expect(link).toHaveAttribute('href', '/items?status=attention');
+  });
+
   it('shows an all-clear empty state when nothing is low', async () => {
     server.use(
       http.get(`${BASE}/items`, () =>

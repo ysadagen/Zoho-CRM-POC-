@@ -19,7 +19,7 @@ from app.models.item import Item, ItemType
 from app.models.raw_item_detail import RawItemDetail
 from app.repositories.item_repo import ItemRepository
 from app.schemas.finished_item_detail import FinishedItemDetailIn
-from app.schemas.item import ItemCreate, ItemUpdate
+from app.schemas.item import ItemCreate, ItemStatus, ItemUpdate
 from app.schemas.raw_item_detail import RawItemDetailIn
 
 logger = logging.getLogger(__name__)
@@ -151,6 +151,7 @@ class ItemService:
         item_type: ItemType | None = None,
         category: str | None = None,
         search: str | None = None,
+        statuses: list[ItemStatus] | None = None,
         include_inactive: bool = False,
     ) -> tuple[list[Item], int]:
         return await self._items.list_(
@@ -159,6 +160,7 @@ class ItemService:
             item_type=item_type,
             category=category,
             search=search,
+            statuses=statuses,
             include_inactive=include_inactive,
         )
 

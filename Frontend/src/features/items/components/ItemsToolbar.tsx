@@ -2,7 +2,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Segmented, type SegmentedOption } from '@/components/ui/Segmented';
 
 export type TypeFilter = 'ALL' | 'RAW' | 'FINISHED';
-export type StatusFilter = 'all' | 'ok' | 'low' | 'out';
+export type StatusFilter = 'all' | 'ok' | 'low' | 'out' | 'attention';
 
 const TYPE_OPTIONS: SegmentedOption<TypeFilter>[] = [
   { value: 'ALL', label: 'All' },
@@ -15,6 +15,8 @@ const STATUS_OPTIONS: SegmentedOption<StatusFilter>[] = [
   { value: 'ok', label: 'OK' },
   { value: 'low', label: 'Low' },
   { value: 'out', label: 'Out' },
+  // "Needs attention" = low or out of stock; the dashboard deep-links here.
+  { value: 'attention', label: 'Attention' },
 ];
 
 export interface ItemsToolbarProps {
