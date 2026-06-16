@@ -262,6 +262,81 @@ async def test_list_items_search_matches_sku_or_name(
     assert by_name.json()["items"][0]["name"] == "Raw Plastic Pellets"
 
 
+async def test_list_items_filter_by_status_matches_derived_status(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Each status bucket is filtered server-side, before pagination."""
+    # IN_STOCK: above threshold.
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OK-1", stock_quantity="500", reorder_threshold="100"),
+    )
+    # LOW_STOCK: has stock but below threshold.
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="LOW-1", stock_quantity="40", reorder_threshold="100"),
+    )
+    # NO_STOCK: zero stock.
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OUT-1", stock_quantity="0", reorder_threshold="100"),
+    )
+
+    ok = await authenticated_client.get(ITEMS_URL, params={"status": "IN_STOCK"})
+    low = await authenticated_client.get(ITEMS_URL, params={"status": "LOW_STOCK"})
+    out = await authenticated_client.get(ITEMS_URL, params={"status": "NO_STOCK"})
+
+    assert [i["sku"] for i in ok.json()["items"]] == ["OK-1"]
+    assert ok.json()["total"] == 1
+    assert [i["sku"] for i in low.json()["items"]] == ["LOW-1"]
+    assert [i["sku"] for i in out.json()["items"]] == ["OUT-1"]
+
+
+async def test_list_items_filter_by_multiple_statuses_matches_any(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A repeated ``status`` param matches any of the requested buckets.
+
+    This is the dashboard "Needs Attention" view: LOW_STOCK + NO_STOCK.
+    """
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OK-1", stock_quantity="500", reorder_threshold="100"),
+    )
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="LOW-1", stock_quantity="40", reorder_threshold="100"),
+    )
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OUT-1", stock_quantity="0", reorder_threshold="100"),
+    )
+
+    response = await authenticated_client.get(
+        ITEMS_URL, params={"status": ["LOW_STOCK", "NO_STOCK"]}
+    )
+
+    body = response.json()
+    assert body["total"] == 2
+    assert {i["sku"] for i in body["items"]} == {"LOW-1", "OUT-1"}
+
+
+async def test_list_items_status_filter_no_threshold_is_in_stock(
+    authenticated_client: AsyncClient,
+) -> None:
+    """An item with stock and no reorder threshold is IN_STOCK, not LOW."""
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="NOTHRESH-1", stock_quantity="10", reorder_threshold=None),
+    )
+
+    in_stock = await authenticated_client.get(ITEMS_URL, params={"status": "IN_STOCK"})
+    low = await authenticated_client.get(ITEMS_URL, params={"status": "LOW_STOCK"})
+
+    assert [i["sku"] for i in in_stock.json()["items"]] == ["NOTHRESH-1"]
+    assert low.json()["total"] == 0
+
+
 # ---------------------------------------------------------------------------
 # Patch
 # ---------------------------------------------------------------------------

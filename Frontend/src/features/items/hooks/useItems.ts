@@ -28,12 +28,16 @@ import {
 } from '../api/items.api';
 import { itemKeys } from '../items.keys';
 
-export function useItemsList(params: ListItemsParams): UseQueryResult<Paginated<Item>> {
+export function useItemsList(
+  params: ListItemsParams,
+  options?: { enabled?: boolean },
+): UseQueryResult<Paginated<Item>> {
   return useQuery({
     queryKey: itemKeys.list(params),
     queryFn: () => listItems(params),
     // Keep the previous page visible while the next loads (no flash of empty).
     placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
   });
 }
 
