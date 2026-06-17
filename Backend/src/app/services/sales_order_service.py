@@ -318,21 +318,32 @@ class SalesOrderService:
         """Consume one SO line's quantity from the item's lots, FEFO.
 
         Returns the number of OUT movements written (one per lot touched).
-        Raises 409 ``INSUFFICIENT_STOCK`` if the item's non-expired lots
-        can't cover the line — the uncovered portion may be untraceable
-        (unbatched) stock, which a pharma system must not ship.
+        Raises 409 ``INSUFFICIENT_STOCK`` if the item's **released**,
+        non-expired lots can't cover the line — quarantine-held or otherwise
+        non-shippable stock is excluded, and any uncovered portion may be
+        untraceable (unbatched) stock, which a pharma system must not ship.
+
+        Traceability: every lot touched is recorded on its own
+        ``stock_movements`` row (carrying ``batch_id``). When the whole line
+        is satisfied from a **single** lot, that lot is also written back to
+        ``sales_order_items.batch_id`` so the order line itself shows where
+        the stock came from; a line split across several lots leaves the line
+        ``batch_id`` NULL (one column can't name many lots) and the full
+        split lives in the movement ledger.
         """
         lots = await self._batches.list_consumable_for_item(line.item_id, as_of=as_of)
         available = sum((lot.quantity for lot in lots), Decimal("0"))
         if available < line.quantity:
             raise ConflictError(
                 f"Insufficient lot-tracked stock for item {line.item_id}: "
-                f"{available} available across non-expired lots, {line.quantity} requested",
+                f"{available} available across released, non-expired lots, "
+                f"{line.quantity} requested",
                 code="INSUFFICIENT_STOCK",
             )
 
         remaining = line.quantity
         movements = 0
+        lots_touched: list[uuid.UUID] = []
         for lot in lots:
             if remaining <= 0:
                 break
@@ -354,6 +365,14 @@ class SalesOrderService:
             )
             remaining -= take
             movements += 1
+            lots_touched.append(lot.id)
+
+        # Single-lot fulfilment → stamp the lot on the line for at-a-glance
+        # traceability (the line had no operator-chosen lot, or this path
+        # wouldn't run). Multi-lot splits stay NULL — the ledger has the full
+        # breakdown.
+        if len(lots_touched) == 1:
+            line.batch_id = lots_touched[0]
         return movements
 
     async def _consume_line_from_batch(

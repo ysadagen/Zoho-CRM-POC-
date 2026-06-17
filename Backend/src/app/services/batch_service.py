@@ -151,8 +151,7 @@ class BatchService:
 
         if new_status not in _ALLOWED_TRANSITIONS[batch.batch_status]:
             raise ConflictError(
-                f"Cannot change lot status from {batch.batch_status.value} "
-                f"to {new_status.value}",
+                f"Cannot change lot status from {batch.batch_status.value} to {new_status.value}",
                 code="INVALID_BATCH_TRANSITION",
             )
 

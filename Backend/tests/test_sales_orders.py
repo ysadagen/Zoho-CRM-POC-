@@ -108,11 +108,13 @@ async def _lot(
     quantity: str,
     batch_number: str = "LOT-1",
     expiry: str = "2035-01-01",
+    batch_status: str = "RELEASED",
 ) -> str:
     """Record an opening-balance lot so the item's stock is lot-tracked.
 
-    Only lot-tracked, non-expired stock is shippable (Phase 1D), so the ship
-    tests give their stock a lot first.
+    Only lot-tracked, non-expired, **released** stock is shippable, so ship
+    tests create their lots RELEASED by default. Pass
+    ``batch_status="QUARANTINE"`` to exercise the not-yet-QC-released path.
     """
     resp = await client.post(
         "/api/v1/batches",
@@ -121,6 +123,7 @@ async def _lot(
             "batch_number": batch_number,
             "expiry_date": expiry,
             "quantity": quantity,
+            "batch_status": batch_status,
         },
     )
     assert resp.status_code == 201, resp.text
@@ -941,9 +944,14 @@ async def test_ship_so_chosen_lot_expired_returns_409(
 # ---------------------------------------------------------------------------
 
 
+async def _set_status(client: AsyncClient, lot_id: str, status: str) -> None:
+    resp = await client.post(f"/api/v1/batches/{lot_id}/status", json={"status": status})
+    assert resp.status_code == 200, resp.text
+
+
 async def _recall(client: AsyncClient, lot_id: str) -> None:
-    await client.post(f"/api/v1/batches/{lot_id}/status", json={"status": "RELEASED"})
-    await client.post(f"/api/v1/batches/{lot_id}/status", json={"status": "RECALLED"})
+    """Recall an already-released lot so it's no longer shippable."""
+    await _set_status(client, lot_id, "RECALLED")
 
 
 async def test_ship_so_skips_recalled_lot_via_fefo(
@@ -985,3 +993,151 @@ async def test_ship_so_chosen_recalled_lot_returns_409(
     resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "BATCH_NOT_SHIPPABLE"
+
+
+# ---------------------------------------------------------------------------
+# QC release gating — only RELEASED stock ships (quarantine is held back)
+# ---------------------------------------------------------------------------
+
+
+async def test_ship_so_skips_quarantine_lot_via_fefo(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Quarantine-held stock is not shippable: FEFO ignores it, and if it's the
+    only lot the ship fails INSUFFICIENT_STOCK with nothing consumed."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    await _lot(
+        authenticated_client,
+        item_id,
+        quantity="100",
+        batch_number="QTN",
+        batch_status="QUARANTINE",
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="10", unit_price="1")]),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["QTN"]["quantity"])) == Decimal("100")  # untouched
+
+
+async def test_ship_so_succeeds_after_releasing_quarantine_lot(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Releasing a quarantine lot makes it shippable; the ship then consumes it."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    lot_id = await _lot(
+        authenticated_client,
+        item_id,
+        quantity="100",
+        batch_number="QTN",
+        batch_status="QUARANTINE",
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="40", unit_price="1")]),
+    )
+    so_id = created.json()["id"]
+
+    # Before release: not shippable.
+    blocked = await authenticated_client.post(f"{SALES_ORDERS_URL}/{so_id}/ship")
+    assert blocked.status_code == 409
+
+    # Release, then ship succeeds.
+    await _set_status(authenticated_client, lot_id, "RELEASED")
+    shipped = await authenticated_client.post(f"{SALES_ORDERS_URL}/{so_id}/ship")
+    assert shipped.status_code == 200, shipped.text
+    assert shipped.json()["status"] == "SHIPPED"
+
+    lots = await _lots_by_number(authenticated_client, item_id)
+    assert Decimal(str(lots["QTN"]["quantity"])) == Decimal("60")  # 100 - 40
+
+
+async def test_ship_so_chosen_quarantine_lot_returns_409(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Explicitly picking a quarantine lot is rejected — only RELEASED ships."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    lot_id = await _lot(
+        authenticated_client,
+        item_id,
+        quantity="100",
+        batch_number="QTN",
+        batch_status="QUARANTINE",
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(
+            customer_id, [_line(item_id, quantity="10", unit_price="1", batch_id=lot_id)]
+        ),
+    )
+    resp = await authenticated_client.post(f"{SALES_ORDERS_URL}/{created.json()['id']}/ship")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "BATCH_NOT_SHIPPABLE"
+
+
+# ---------------------------------------------------------------------------
+# Batch traceability — the consumed lot is recorded on the shipped SO line
+# ---------------------------------------------------------------------------
+
+
+async def test_ship_so_single_lot_stamps_batch_id_on_line(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A line fulfilled FEFO from a single lot gets that lot stamped on the SO
+    line for at-a-glance traceability (was NULL before)."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    lot_id = await _lot(authenticated_client, item_id, quantity="100", batch_number="ONE")
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="30", unit_price="1")]),
+    )
+    so_id = created.json()["id"]
+    # Created via FEFO (no chosen lot) → line batch_id starts NULL.
+    assert created.json()["items"][0]["batch_id"] is None
+
+    await authenticated_client.post(f"{SALES_ORDERS_URL}/{so_id}/ship")
+
+    detail = (await authenticated_client.get(f"{SALES_ORDERS_URL}/{so_id}")).json()
+    assert detail["items"][0]["batch_id"] == lot_id
+
+
+async def test_ship_so_multi_lot_leaves_line_batch_id_null(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A line split across several lots leaves the line batch_id NULL — one
+    column can't name many lots; the full split lives in the ledger."""
+    customer_id = await _create_customer(authenticated_client)
+    item_id = await _create_item(authenticated_client, stock="100")
+    await _lot(
+        authenticated_client, item_id, quantity="20", batch_number="EARLY", expiry="2030-01-01"
+    )
+    await _lot(
+        authenticated_client, item_id, quantity="50", batch_number="LATE", expiry="2031-01-01"
+    )
+
+    created = await authenticated_client.post(
+        SALES_ORDERS_URL,
+        json=_so_payload(customer_id, [_line(item_id, quantity="40", unit_price="1")]),
+    )
+    so_id = created.json()["id"]
+    await authenticated_client.post(f"{SALES_ORDERS_URL}/{so_id}/ship")
+
+    detail = (await authenticated_client.get(f"{SALES_ORDERS_URL}/{so_id}")).json()
+    assert detail["items"][0]["batch_id"] is None
+    # The ledger has one OUT row per lot touched, each carrying its batch.
+    ledger = (await authenticated_client.get(f"/api/v1/stock-movements?item_id={item_id}")).json()
+    out_lots = {m["batch_id"] for m in ledger["items"] if m["direction"] == "OUT"}
+    assert len(out_lots) == 2

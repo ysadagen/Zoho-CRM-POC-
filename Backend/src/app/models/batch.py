@@ -59,13 +59,13 @@ class BatchStatus(StrEnum):
     RECALLED = "RECALLED"
 
 
-# Lots that may still be shipped. REJECTED/RECALLED/EXPIRED lots are removed
-# from both FEFO selection and explicit lot choice at ship time (#7). QUARANTINE
-# stays shippable for now — gating sales on QC release is a deliberate, separate
-# policy decision (it would block currently-shippable received stock).
-SHIPPABLE_BATCH_STATUSES: frozenset[BatchStatus] = frozenset(
-    {BatchStatus.QUARANTINE, BatchStatus.RELEASED}
-)
+# Lots that may be shipped. Pharma rule: **only QC-RELEASED stock ships.**
+# QUARANTINE (pending QC), REJECTED, RECALLED and EXPIRED lots are all excluded
+# from FEFO selection and explicit lot choice at ship time, so quarantine-held
+# stock can never leave the warehouse until it's released (POST
+# /batches/{id}/status → RELEASED). This is the deliberate policy the earlier
+# phase deferred; enforcing it is what keeps the inventory pharma-correct.
+SHIPPABLE_BATCH_STATUSES: frozenset[BatchStatus] = frozenset({BatchStatus.RELEASED})
 
 
 class Batch(Base):

@@ -17,7 +17,7 @@ import type { FinishedItemDetail, Item, RawItemDetail } from '@/types/api.types'
 import { ItemStatusBadge, ItemTypeBadge } from '../components/ItemBadges';
 import { ItemFormDrawer } from '../components/ItemFormDrawer';
 import { ItemMovementsTab } from '../components/ItemMovementsTab';
-import { useDeleteItem, useItem, useItemMovements } from '../hooks/useItems';
+import { useDeleteItem, useItem, useItemMovements, useUpdateItem } from '../hooks/useItems';
 import { parseIngredients, summariseMovements } from '../item.transform';
 import {
   dosageFormLabel,
@@ -195,6 +195,7 @@ export function ItemDetailPage(): JSX.Element {
   const itemQuery = useItem(id);
   const movementsQuery = useItemMovements(id);
   const deleteMut = useDeleteItem();
+  const reactivateMut = useUpdateItem(id);
   const [tab, setTab] = useState<DetailTab>('overview');
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -219,6 +220,16 @@ export function ItemDetailPage(): JSX.Element {
     });
   };
 
+  const onReactivate = (): void => {
+    reactivateMut.mutate(
+      { is_active: true },
+      {
+        onSuccess: () => toast.success(`${item.name} reactivated.`),
+        onError: (error) => reportApiError(error, { scope: 'items.reactivate' }),
+      },
+    );
+  };
+
   return (
     <>
       <PageHeader
@@ -238,9 +249,13 @@ export function ItemDetailPage(): JSX.Element {
             <Button variant="pri" onClick={() => setEditOpen(true)}>
               Edit
             </Button>
-            {item.is_active && (
+            {item.is_active ? (
               <Button variant="dng" onClick={() => setConfirmDelete(true)}>
                 Deactivate
+              </Button>
+            ) : (
+              <Button variant="pri" onClick={onReactivate} loading={reactivateMut.isPending}>
+                Reactivate
               </Button>
             )}
           </>

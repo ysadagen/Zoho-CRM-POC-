@@ -82,9 +82,9 @@ class BatchRepository:
         For FEFO consumption (SO ship). ``with_for_update`` locks the lot rows
         so concurrent ships of the same item serialise and can't over-consume.
         Excludes expired (``expiry_date < as_of``) and depleted (``quantity = 0``)
-        lots, and lots whose QC status isn't shippable (REJECTED / RECALLED /
-        EXPIRED) — see :data:`SHIPPABLE_BATCH_STATUSES` (#7). QUARANTINE stays
-        eligible; gating sales on RELEASED-only is a separate policy decision.
+        lots, and any lot whose QC status isn't shippable — only **RELEASED**
+        lots qualify (see :data:`SHIPPABLE_BATCH_STATUSES`). QUARANTINE-held
+        stock is therefore never auto-selected for shipping until it's released.
         """
         stmt = (
             select(Batch)
