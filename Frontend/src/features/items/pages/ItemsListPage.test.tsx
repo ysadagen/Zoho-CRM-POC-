@@ -101,6 +101,19 @@ describe('ItemsListPage', () => {
     await waitFor(() => expect(urls.at(-1)?.searchParams.get('type')).toBe('RAW'));
   });
 
+  it('sends include_inactive=true when the "Include inactive" toggle is on', async () => {
+    const urls: URL[] = [];
+    server.use(itemsOk((url) => urls.push(url)));
+    const user = userEvent.setup();
+    renderWithProviders(<ItemsListPage />);
+    await screen.findByText('Raw Steel');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Include inactive' }));
+    await waitFor(() =>
+      expect(urls.at(-1)?.searchParams.get('include_inactive')).toBe('true'),
+    );
+  });
+
   it('opens the create drawer from the page action', async () => {
     server.use(itemsOk());
     const user = userEvent.setup();

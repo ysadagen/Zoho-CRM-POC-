@@ -144,6 +144,31 @@ describe('ItemDetailPage', () => {
     expect(await screen.findByText('Raw Steel deactivated.')).toBeInTheDocument();
   });
 
+  it('reactivates a deactivated item from the detail screen', async () => {
+    let patchBody: unknown;
+    server.use(
+      http.get(`${BASE}/items/i1`, () => HttpResponse.json({ ...ITEM, is_active: false })),
+      http.get(`${BASE}/stock-movements`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0 }),
+      ),
+      http.patch(`${BASE}/items/i1`, async ({ request }) => {
+        patchBody = await request.json();
+        return HttpResponse.json({ ...ITEM, is_active: true });
+      }),
+    );
+    seedSession();
+    const user = userEvent.setup();
+    renderWithProviders(<AppRouter />, { route: '/items/i1' });
+
+    await screen.findByRole('heading', { name: 'Raw Steel' });
+    // An inactive item shows Reactivate, not Deactivate.
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reactivate' }));
+
+    await waitFor(() => expect(patchBody).toEqual({ is_active: true }));
+    expect(await screen.findByText('Raw Steel reactivated.')).toBeInTheDocument();
+  });
+
   it('renders the finished-product detail block with human labels', async () => {
     server.use(
       http.get(`${BASE}/items/f1`, () => HttpResponse.json(FINISHED_ITEM)),
