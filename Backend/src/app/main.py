@@ -21,10 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
+from app.api.v1.activities import router as activities_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.batches import router as batches_router
+from app.api.v1.customer_targets import router as customer_targets_router
 from app.api.v1.customers import router as customers_router
+from app.api.v1.invoices import router as invoices_router
 from app.api.v1.items import router as items_router
+from app.api.v1.leads import router as leads_router
 from app.api.v1.purchase_orders import router as purchase_orders_router
 from app.api.v1.sales_orders import router as sales_orders_router
 from app.api.v1.stock_movements import router as stock_movements_router
@@ -253,12 +257,16 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix="/api/v1")
     app.include_router(items_router, prefix="/api/v1")
     app.include_router(customers_router, prefix="/api/v1")
+    app.include_router(customer_targets_router, prefix="/api/v1")
     app.include_router(vendors_router, prefix="/api/v1")
     app.include_router(vendor_terms_router, prefix="/api/v1")
     app.include_router(stock_movements_router, prefix="/api/v1")
     app.include_router(batches_router, prefix="/api/v1")
     app.include_router(purchase_orders_router, prefix="/api/v1")
     app.include_router(sales_orders_router, prefix="/api/v1")
+    app.include_router(leads_router, prefix="/api/v1")
+    app.include_router(activities_router, prefix="/api/v1")
+    app.include_router(invoices_router, prefix="/api/v1")
 
     logger.info("app_initialized", extra={"env": settings.app_env})
     return app

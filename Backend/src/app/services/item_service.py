@@ -67,6 +67,7 @@ class ItemService:
             stock_quantity=payload.stock_quantity,
             reorder_threshold=payload.reorder_threshold,
             unit_price=payload.unit_price,
+            standard_cost=payload.standard_cost,
             storage_condition=payload.storage_condition,
             shelf_life_days=payload.shelf_life_days,
             created_by_user_id=actor_id,

@@ -17,10 +17,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.models.customer import CompetitiveRiskLevel, CustomerType
+
 __all__ = [
+    "CompetitiveRiskLevel",
     "CustomerCreate",
     "CustomerList",
     "CustomerRead",
+    "CustomerType",
     "CustomerUpdate",
 ]
 
@@ -39,6 +43,13 @@ class CustomerCreate(BaseModel):
     customer_code: str | None = Field(default=None, min_length=1, max_length=60)
     gstin: str | None = Field(default=None, min_length=15, max_length=15)
     notes: str | None = Field(default=None, max_length=2000)
+    # Intelligence-layer attributes (default to the conservative tier/level).
+    customer_type: CustomerType = CustomerType.RETAILER
+    state: str | None = Field(default=None, min_length=1, max_length=120)
+    district: str | None = Field(default=None, min_length=1, max_length=120)
+    city: str | None = Field(default=None, min_length=1, max_length=120)
+    pincode: str | None = Field(default=None, min_length=1, max_length=20)
+    competitive_risk_level: CompetitiveRiskLevel = CompetitiveRiskLevel.NONE
 
 
 class CustomerUpdate(BaseModel):
@@ -62,6 +73,13 @@ class CustomerUpdate(BaseModel):
     gstin: str | None = Field(default=None, min_length=15, max_length=15)
     notes: str | None = Field(default=None, max_length=2000)
     is_active: bool | None = None
+    # Intelligence-layer attributes (all optional on update).
+    customer_type: CustomerType | None = None
+    state: str | None = Field(default=None, min_length=1, max_length=120)
+    district: str | None = Field(default=None, min_length=1, max_length=120)
+    city: str | None = Field(default=None, min_length=1, max_length=120)
+    pincode: str | None = Field(default=None, min_length=1, max_length=20)
+    competitive_risk_level: CompetitiveRiskLevel | None = None
 
 
 class CustomerRead(BaseModel):
@@ -79,6 +97,12 @@ class CustomerRead(BaseModel):
     customer_code: str | None
     gstin: str | None
     notes: str | None
+    customer_type: CustomerType
+    state: str | None
+    district: str | None
+    city: str | None
+    pincode: str | None
+    competitive_risk_level: CompetitiveRiskLevel
     is_active: bool
     created_by_user_id: uuid.UUID
     updated_by_user_id: uuid.UUID

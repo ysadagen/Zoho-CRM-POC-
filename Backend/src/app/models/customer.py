@@ -13,12 +13,42 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+
+
+class CustomerType(StrEnum):
+    """Channel tier of a customer.
+
+    Drives the beat-planning customer-type weight (DEALER ranks above
+    SUB_DEALER above RETAILER). Defaults to ``RETAILER`` — the most
+    conservative (lowest-priority) tier — for existing rows and for
+    create calls that omit it.
+    """
+
+    DEALER = "DEALER"
+    SUB_DEALER = "SUB_DEALER"
+    RETAILER = "RETAILER"
+
+
+class CompetitiveRiskLevel(StrEnum):
+    """Manual flag of competitive pressure on a customer.
+
+    Real signals (price undercutting, volume migration) require data we
+    don't capture in the POC; this rep-maintained enum is the honest
+    stand-in that feeds the customer-health churn-risk engine. Defaults
+    to ``NONE``.
+    """
+
+    NONE = "NONE"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
 
 
 class Customer(Base):
@@ -59,6 +89,34 @@ class Customer(Base):
         nullable=True,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Intelligence-layer attributes (Phase 2A) -------------------------
+    # Channel tier — feeds the beat-planning customer-type weight.
+    customer_type: Mapped[CustomerType] = mapped_column(
+        Enum(CustomerType, name="customer_type", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=CustomerType.RETAILER,
+        server_default=CustomerType.RETAILER.value,
+    )
+    # Structured location — feeds lead-scoring serviceability and the
+    # beat-planning location-density (district clustering). The free-text
+    # ``address`` above stays for display; these are for computation.
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    district: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    pincode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Manual competitive-pressure flag — feeds customer-health churn risk.
+    competitive_risk_level: Mapped[CompetitiveRiskLevel] = mapped_column(
+        Enum(
+            CompetitiveRiskLevel,
+            name="competitive_risk_level",
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+        default=CompetitiveRiskLevel.NONE,
+        server_default=CompetitiveRiskLevel.NONE.value,
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
