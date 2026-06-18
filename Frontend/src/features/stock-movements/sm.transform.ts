@@ -70,10 +70,12 @@ export function movementParty(m: StockMovement, maps: PartyMaps): string {
 }
 
 export function toAdjustmentPayload(values: AdjustmentValues): ManualAdjustmentRequest {
-  return {
+  const payload: ManualAdjustmentRequest = {
     item_id: values.item_id,
     direction: values.direction,
     quantity: values.quantity,
     remarks: values.remarks,
   };
+  if (values.batch_id) payload.batch_id = values.batch_id;
+  return payload;
 }

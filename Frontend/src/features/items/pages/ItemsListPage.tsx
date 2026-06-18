@@ -15,7 +15,7 @@ import { ItemFormDrawer } from '../components/ItemFormDrawer';
 import { ItemsTable } from '../components/ItemsTable';
 import { ItemsToolbar, type StatusFilter, type TypeFilter } from '../components/ItemsToolbar';
 import { useItemsList } from '../hooks/useItems';
-import { STATUS_FILTER_TO_STATUS } from '../item.transform';
+import { STATUS_FILTER_TO_STATUSES } from '../item.transform';
 
 const DEFAULT_LIMIT = 25;
 
@@ -28,8 +28,9 @@ export function ItemsListPage(): JSX.Element {
   const [type, setType] = useState<TypeFilter>('ALL');
   const [status, setStatus] = useState<StatusFilter>(() => {
     const s = searchParams.get('status');
-    return s === 'ok' || s === 'low' || s === 'out' ? s : 'all';
+    return s === 'ok' || s === 'low' || s === 'out' || s === 'attention' ? s : 'all';
   });
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
 
@@ -48,21 +49,20 @@ export function ItemsListPage(): JSX.Element {
   // A changed server-side filter invalidates the current page position.
   useEffect(() => {
     setOffset(0);
-  }, [search, type, limit]);
+  }, [search, type, status, includeInactive, limit]);
 
   const query = useItemsList({
     limit,
     offset,
     type: type === 'ALL' ? undefined : (type as ItemType),
     search,
+    // Status is a real server filter, so the result + pager total are correct
+    // across the whole catalog (not just the loaded page).
+    statuses: status === 'all' ? undefined : STATUS_FILTER_TO_STATUSES[status],
+    includeInactive,
   });
 
-  // Status has no Backend filter (Backend §9.3), so it filters the loaded page.
-  const pageRows = query.data?.items ?? [];
-  const rows =
-    status === 'all'
-      ? pageRows
-      : pageRows.filter((item) => item.status === STATUS_FILTER_TO_STATUS[status]);
+  const rows = query.data?.items ?? [];
 
   return (
     <>
@@ -87,6 +87,8 @@ export function ItemsListPage(): JSX.Element {
             onType={setType}
             status={status}
             onStatus={setStatus}
+            includeInactive={includeInactive}
+            onIncludeInactive={setIncludeInactive}
           />
           <ItemsTable
             items={rows}

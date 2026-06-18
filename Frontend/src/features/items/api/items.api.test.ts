@@ -34,6 +34,34 @@ describe('items.api', () => {
     expect(url?.searchParams.get('search')).toBe('bottle');
   });
 
+  it('listItems sends statuses as repeated status params (no [] brackets)', async () => {
+    let url: URL | undefined;
+    server.use(
+      http.get(`${BASE}/items`, ({ request }) => {
+        url = new URL(request.url);
+        return HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0 });
+      }),
+    );
+
+    await listItems({ limit: 25, offset: 0, statuses: ['LOW_STOCK', 'NO_STOCK'] });
+    expect(url?.searchParams.getAll('status')).toEqual(['LOW_STOCK', 'NO_STOCK']);
+    // No bracketed key form that FastAPI would not parse.
+    expect(url?.searchParams.has('status[]')).toBe(false);
+  });
+
+  it('listItems omits an empty statuses array', async () => {
+    let url: URL | undefined;
+    server.use(
+      http.get(`${BASE}/items`, ({ request }) => {
+        url = new URL(request.url);
+        return HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0 });
+      }),
+    );
+
+    await listItems({ limit: 25, offset: 0, statuses: [] });
+    expect(url?.searchParams.has('status')).toBe(false);
+  });
+
   it('listItems omits empty type/search', async () => {
     let url: URL | undefined;
     server.use(

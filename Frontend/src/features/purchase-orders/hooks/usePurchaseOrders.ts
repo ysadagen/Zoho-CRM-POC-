@@ -9,7 +9,12 @@ import {
 
 import { itemKeys } from '@/features/items/items.keys';
 import { logger } from '@/lib/logger';
-import type { Paginated, PurchaseOrder, PurchaseOrderCreateRequest } from '@/types/api.types';
+import type {
+  Paginated,
+  PurchaseOrder,
+  PurchaseOrderCreateRequest,
+  PurchaseOrderReceiveRequest,
+} from '@/types/api.types';
 
 import {
   createPurchaseOrder,
@@ -49,10 +54,12 @@ export function useCreatePurchaseOrder(): UseMutationResult<
   });
 }
 
-export function useReceivePurchaseOrder(id: string): UseMutationResult<PurchaseOrder, unknown, void> {
+export function useReceivePurchaseOrder(
+  id: string,
+): UseMutationResult<PurchaseOrder, unknown, PurchaseOrderReceiveRequest> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => receivePurchaseOrder(id),
+    mutationFn: (body: PurchaseOrderReceiveRequest) => receivePurchaseOrder(id, body),
     onSuccess: (po) => {
       logger.info('purchase-orders.receive', { poId: po.id, poNumber: po.po_number });
       // Receiving mutates item stock — refresh PO + item caches.

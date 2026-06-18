@@ -29,6 +29,7 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     stock_after: '10',
     reference_type: null,
     reference_id: null,
+    batch_id: null,
     remarks: 'Recount correction',
     created_by_user_id: 'u1',
     created_at: '2026-05-01T10:00:00Z',
@@ -100,9 +101,27 @@ describe('movementParty', () => {
 });
 
 describe('toAdjustmentPayload', () => {
-  it('maps the form values straight through', () => {
+  it('maps the form values straight through, dropping a blank lot', () => {
     expect(
-      toAdjustmentPayload({ item_id: 'i1', direction: 'OUT', quantity: '5', remarks: 'Damaged units' }),
+      toAdjustmentPayload({
+        item_id: 'i1',
+        direction: 'OUT',
+        quantity: '5',
+        remarks: 'Damaged units',
+        batch_id: '',
+      }),
     ).toEqual({ item_id: 'i1', direction: 'OUT', quantity: '5', remarks: 'Damaged units' });
+  });
+
+  it('includes the chosen lot when set (#8)', () => {
+    expect(
+      toAdjustmentPayload({
+        item_id: 'i1',
+        direction: 'OUT',
+        quantity: '5',
+        remarks: 'Damaged units',
+        batch_id: 'b9',
+      }),
+    ).toMatchObject({ batch_id: 'b9' });
   });
 });

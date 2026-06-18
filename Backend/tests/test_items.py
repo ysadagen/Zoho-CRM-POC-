@@ -262,6 +262,81 @@ async def test_list_items_search_matches_sku_or_name(
     assert by_name.json()["items"][0]["name"] == "Raw Plastic Pellets"
 
 
+async def test_list_items_filter_by_status_matches_derived_status(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Each status bucket is filtered server-side, before pagination."""
+    # IN_STOCK: above threshold.
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OK-1", stock_quantity="500", reorder_threshold="100"),
+    )
+    # LOW_STOCK: has stock but below threshold.
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="LOW-1", stock_quantity="40", reorder_threshold="100"),
+    )
+    # NO_STOCK: zero stock.
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OUT-1", stock_quantity="0", reorder_threshold="100"),
+    )
+
+    ok = await authenticated_client.get(ITEMS_URL, params={"status": "IN_STOCK"})
+    low = await authenticated_client.get(ITEMS_URL, params={"status": "LOW_STOCK"})
+    out = await authenticated_client.get(ITEMS_URL, params={"status": "NO_STOCK"})
+
+    assert [i["sku"] for i in ok.json()["items"]] == ["OK-1"]
+    assert ok.json()["total"] == 1
+    assert [i["sku"] for i in low.json()["items"]] == ["LOW-1"]
+    assert [i["sku"] for i in out.json()["items"]] == ["OUT-1"]
+
+
+async def test_list_items_filter_by_multiple_statuses_matches_any(
+    authenticated_client: AsyncClient,
+) -> None:
+    """A repeated ``status`` param matches any of the requested buckets.
+
+    This is the dashboard "Needs Attention" view: LOW_STOCK + NO_STOCK.
+    """
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OK-1", stock_quantity="500", reorder_threshold="100"),
+    )
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="LOW-1", stock_quantity="40", reorder_threshold="100"),
+    )
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="OUT-1", stock_quantity="0", reorder_threshold="100"),
+    )
+
+    response = await authenticated_client.get(
+        ITEMS_URL, params={"status": ["LOW_STOCK", "NO_STOCK"]}
+    )
+
+    body = response.json()
+    assert body["total"] == 2
+    assert {i["sku"] for i in body["items"]} == {"LOW-1", "OUT-1"}
+
+
+async def test_list_items_status_filter_no_threshold_is_in_stock(
+    authenticated_client: AsyncClient,
+) -> None:
+    """An item with stock and no reorder threshold is IN_STOCK, not LOW."""
+    await authenticated_client.post(
+        ITEMS_URL,
+        json=_raw_item_payload(sku="NOTHRESH-1", stock_quantity="10", reorder_threshold=None),
+    )
+
+    in_stock = await authenticated_client.get(ITEMS_URL, params={"status": "IN_STOCK"})
+    low = await authenticated_client.get(ITEMS_URL, params={"status": "LOW_STOCK"})
+
+    assert [i["sku"] for i in in_stock.json()["items"]] == ["NOTHRESH-1"]
+    assert low.json()["total"] == 0
+
+
 # ---------------------------------------------------------------------------
 # Patch
 # ---------------------------------------------------------------------------
@@ -407,3 +482,51 @@ async def test_item_status_is_computed_from_stock_and_threshold(
     get_resp = await authenticated_client.get(_item_url(item_id))
     assert get_resp.status_code == 200
     assert get_resp.json()["status"] == expected_status
+
+
+# ---------------------------------------------------------------------------
+# Soft delete via DELETE (#1)
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_item_requires_auth_returns_401(client_with_db: AsyncClient) -> None:
+    response = await client_with_db.delete(_item_url(uuid.uuid4()))
+    assert response.status_code == 401
+
+
+async def test_soft_delete_hides_item_from_default_list(
+    authenticated_client: AsyncClient,
+) -> None:
+    """DELETE deactivates the item: 204, gone from the default list, still
+    fetchable directly with ``is_active=false``, and visible only when
+    ``include_inactive=true`` is passed."""
+    created = await authenticated_client.post(ITEMS_URL, json=_finished_item_payload())
+    item_id = created.json()["id"]
+
+    resp = await authenticated_client.delete(_item_url(item_id))
+    assert resp.status_code == 204
+
+    listed = (await authenticated_client.get(ITEMS_URL)).json()
+    assert item_id not in {i["id"] for i in listed["items"]}
+
+    got = await authenticated_client.get(_item_url(item_id))
+    assert got.status_code == 200
+    assert got.json()["is_active"] is False
+
+    incl = (await authenticated_client.get(ITEMS_URL, params={"include_inactive": "true"})).json()
+    assert item_id in {i["id"] for i in incl["items"]}
+
+
+async def test_soft_delete_is_idempotent(authenticated_client: AsyncClient) -> None:
+    created = await authenticated_client.post(ITEMS_URL, json=_finished_item_payload())
+    item_id = created.json()["id"]
+    first = await authenticated_client.delete(_item_url(item_id))
+    second = await authenticated_client.delete(_item_url(item_id))
+    assert first.status_code == 204
+    assert second.status_code == 204
+
+
+async def test_delete_unknown_item_returns_404(authenticated_client: AsyncClient) -> None:
+    resp = await authenticated_client.delete(_item_url(uuid.uuid4()))
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "ITEM_NOT_FOUND"

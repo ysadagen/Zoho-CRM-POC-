@@ -21,7 +21,9 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from app.models.item import ItemType
+from app.models.item import ItemType, StorageCondition
+from app.schemas.finished_item_detail import FinishedItemDetailIn, FinishedItemDetailRead
+from app.schemas.raw_item_detail import RawItemDetailIn, RawItemDetailRead
 
 __all__ = [
     "ItemCreate",
@@ -31,6 +33,7 @@ __all__ = [
     "ItemStatus",
     "ItemType",
     "ItemUpdate",
+    "StorageCondition",
 ]
 
 
@@ -67,6 +70,12 @@ class ItemCreate(BaseModel):
     stock_quantity: Decimal = Field(default=Decimal("0"), ge=0)
     reorder_threshold: Decimal | None = Field(default=None, ge=0)
     unit_price: Decimal = Field(ge=0)
+    storage_condition: StorageCondition | None = None
+    shelf_life_days: int | None = Field(default=None, ge=0)
+    # Subtype detail — at most the block matching ``type`` (the service
+    # rejects a mismatched block with 422 ITEM_DETAIL_TYPE_MISMATCH).
+    raw_detail: RawItemDetailIn | None = None
+    finished_detail: FinishedItemDetailIn | None = None
 
 
 class ItemUpdate(BaseModel):
@@ -86,7 +95,12 @@ class ItemUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     reorder_threshold: Decimal | None = Field(default=None, ge=0)
     unit_price: Decimal | None = Field(default=None, ge=0)
+    storage_condition: StorageCondition | None = None
+    shelf_life_days: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
+    # Partial-patch the matching subtype block; a mismatched block → 422.
+    raw_detail: RawItemDetailIn | None = None
+    finished_detail: FinishedItemDetailIn | None = None
 
 
 class ItemRead(BaseModel):
@@ -104,11 +118,16 @@ class ItemRead(BaseModel):
     stock_quantity: Decimal
     reorder_threshold: Decimal | None
     unit_price: Decimal
+    storage_condition: StorageCondition | None
+    shelf_life_days: int | None
     is_active: bool
     created_by_user_id: uuid.UUID
     updated_by_user_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    # Exactly one is populated, matching ``type`` (the other is null).
+    raw_detail: RawItemDetailRead | None = None
+    finished_detail: FinishedItemDetailRead | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

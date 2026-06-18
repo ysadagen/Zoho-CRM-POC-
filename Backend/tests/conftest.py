@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -64,6 +65,11 @@ def _initialize_test_schema() -> Iterator[None]:
     as a subprocess (so its own ``asyncio.run`` inside ``env.py``
     can't collide with pytest-asyncio's loop). The URL is passed via
     ``-x url=...`` so the dev DB is never touched.
+
+    Alembic is invoked via ``python -m alembic`` using the current
+    interpreter (``sys.executable``) rather than ``uv run`` — the latter
+    is blocked by local Application Control on some dev machines, and
+    using the running interpreter guarantees the same venv regardless.
     """
     settings = get_settings()
     test_url = settings.test_database_url
@@ -80,7 +86,7 @@ def _initialize_test_schema() -> Iterator[None]:
     asyncio.run(_wipe())
 
     result = subprocess.run(
-        ["uv", "run", "alembic", "-x", f"url={test_url}", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "-x", f"url={test_url}", "upgrade", "head"],
         cwd=str(_BACKEND_DIR),
         capture_output=True,
         text=True,

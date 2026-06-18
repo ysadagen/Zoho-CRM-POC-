@@ -48,16 +48,20 @@ describe('po.api', () => {
     expect(body).toMatchObject({ vendor_id: 'v1' });
   });
 
-  it('receivePurchaseOrder POSTs to /receive with no body', async () => {
-    let hit = false;
+  it('receivePurchaseOrder POSTs the per-line lot body to /receive', async () => {
+    let body: unknown;
     server.use(
-      http.post(`${BASE}/purchase-orders/po1/receive`, () => {
-        hit = true;
+      http.post(`${BASE}/purchase-orders/po1/receive`, async ({ request }) => {
+        body = await request.json();
         return HttpResponse.json({ id: 'po1', status: 'RECEIVED' });
       }),
     );
-    const po = await receivePurchaseOrder('po1');
-    expect(hit).toBe(true);
+    const po = await receivePurchaseOrder('po1', {
+      lines: [{ item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01' }],
+    });
     expect(po.status).toBe('RECEIVED');
+    expect(body).toEqual({
+      lines: [{ item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01' }],
+    });
   });
 });

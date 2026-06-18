@@ -16,6 +16,13 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+/** The drawer fetches RAW items (for the ingredient picker) when type=FINISHED. */
+function rawItemsHandler(items: unknown[] = []) {
+  return http.get(`${BASE}/items`, () =>
+    HttpResponse.json({ items, total: items.length, limit: 100, offset: 0 }),
+  );
+}
+
 const EXISTING: Item = {
   id: 'i1',
   sku: 'BOT-1L',
@@ -27,6 +34,10 @@ const EXISTING: Item = {
   stock_quantity: '500',
   reorder_threshold: '100',
   unit_price: '45',
+  storage_condition: null,
+  shelf_life_days: null,
+  raw_detail: null,
+  finished_detail: null,
   status: 'IN_STOCK',
   is_active: true,
   created_at: '2026-01-01T00:00:00Z',
@@ -66,6 +77,88 @@ describe('ItemFormDrawer — create', () => {
       unit_price: '45',
     });
     expect(await screen.findByText('1L Bottle created.')).toBeInTheDocument();
+  });
+
+  it('reveals finished-product fields on type change and sends the detail block', async () => {
+    let body: unknown;
+    server.use(
+      rawItemsHandler(),
+      http.post(`${BASE}/items`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          { id: 'f1', sku: 'PCM-500', name: 'Paracetamol 500', created_at: 'now' },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ItemFormDrawer mode="create" onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    // RAW by default — finished fields are hidden until the type flips.
+    expect(screen.queryByLabelText('Dosage form')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Type'), 'FINISHED');
+    expect(screen.getByLabelText('Dosage form')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('SKU'), 'PCM-500');
+    await user.type(screen.getByLabelText('Name'), 'Paracetamol 500');
+    await user.type(screen.getByLabelText('Category'), 'Analgesic');
+    await user.type(screen.getByLabelText('Unit price'), '20');
+    await user.selectOptions(screen.getByLabelText('Storage condition'), 'COLD_CHAIN_2_8');
+    await user.type(screen.getByLabelText('Generic name'), 'Paracetamol');
+    await user.selectOptions(screen.getByLabelText('Dosage form'), 'TABLET');
+    await user.click(screen.getByLabelText('Prescription required'));
+    await user.click(screen.getByRole('button', { name: 'Create item' }));
+
+    await waitFor(() => expect(body).toBeTruthy());
+    expect(body).toMatchObject({
+      type: 'FINISHED',
+      storage_condition: 'COLD_CHAIN_2_8',
+      finished_detail: {
+        generic_name: 'Paracetamol',
+        dosage_form: 'TABLET',
+        is_prescription_required: true,
+      },
+    });
+  });
+
+  it('lets ingredients be picked from raw materials with the unit auto-fetched', async () => {
+    let body: unknown;
+    server.use(
+      rawItemsHandler([
+        { id: 'r1', sku: 'RAW-LAC', name: 'Lactose', type: 'RAW', unit_of_measure: 'g' },
+      ]),
+      http.post(`${BASE}/items`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          { id: 'f2', sku: 'TAB-1', name: 'Tablet', created_at: 'now' },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ItemFormDrawer mode="create" onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await user.selectOptions(screen.getByLabelText('Type'), 'FINISHED');
+    // The raw material is available to pick from the ingredient combobox (a
+    // datalist option, so hidden in the a11y tree); awaiting it also lets the
+    // raw-materials fetch resolve before we rely on the unit auto-fill.
+    expect(await screen.findByRole('option', { name: 'Lactose', hidden: true })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('SKU'), 'TAB-1');
+    await user.type(screen.getByLabelText('Name'), 'Tablet');
+    await user.type(screen.getByLabelText('Category'), 'Tablets');
+    await user.type(screen.getByLabelText('Unit price'), '10');
+    // Picking the raw material auto-fetches its unit (g).
+    await user.type(screen.getByLabelText('Ingredient name 1'), 'Lactose');
+    expect(screen.getByLabelText('Ingredient unit 1')).toHaveValue('g');
+    await user.type(screen.getByLabelText('Ingredient quantity 1'), '200');
+    await user.click(screen.getByRole('button', { name: 'Create item' }));
+
+    await waitFor(() => expect(body).toBeTruthy());
+    expect(body).toMatchObject({
+      type: 'FINISHED',
+      finished_detail: { ingredients: JSON.stringify([{ name: 'Lactose', qty: '200', unit: 'g' }]) },
+    });
   });
 
   it('blocks submit and shows messages when required fields are empty', async () => {
@@ -137,6 +230,7 @@ describe('ItemFormDrawer — edit', () => {
   it('prefills, patches PATCH-safe fields and toasts success', async () => {
     let body: unknown;
     server.use(
+      rawItemsHandler(),
       http.patch(`${BASE}/items/i1`, async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ ...EXISTING, name: 'Renamed Bottle' });

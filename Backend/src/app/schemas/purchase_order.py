@@ -18,8 +18,9 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.purchase_order import PurchaseOrderStatus
 
@@ -29,6 +30,8 @@ __all__ = [
     "PurchaseOrderLineRead",
     "PurchaseOrderList",
     "PurchaseOrderRead",
+    "PurchaseOrderReceive",
+    "PurchaseOrderReceiveLine",
     "PurchaseOrderStatus",
 ]
 
@@ -59,6 +62,50 @@ class PurchaseOrderCreate(BaseModel):
     expected_delivery_date: date | None = None
     notes: str | None = Field(default=None, max_length=2000)
     items: list[PurchaseOrderLineCreate] = Field(min_length=1)
+
+
+class PurchaseOrderReceiveLine(BaseModel):
+    """One lot (batch) received against a PO line, supplied at receive time.
+
+    The operator supplies the manufacturer's ``batch_number`` and the
+    lot's ``expiry_date`` (required — pharma stock must enter with an
+    expiry). Lots are matched to a PO line by ``item_id``.
+
+    A PO line may be split across **several** lots (different batch
+    numbers / expiries arriving in one shipment). When splitting, every
+    lot must carry an explicit ``quantity`` and the lots' quantities must
+    sum to the PO line quantity. For a line received as a single lot you
+    may omit ``quantity`` — the whole PO-line quantity is used. Unit cost
+    always comes from the PO line, never from here.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    item_id: uuid.UUID
+    batch_number: str = Field(min_length=1, max_length=64)
+    expiry_date: date
+    manufacturing_date: date | None = None
+    storage_location: str | None = Field(default=None, max_length=120)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
+
+    @model_validator(mode="after")
+    def _expiry_on_or_after_manufacture(self) -> Self:
+        if self.manufacturing_date is not None and self.expiry_date < self.manufacturing_date:
+            raise ValueError("expiry_date must be on or after manufacturing_date")
+        return self
+
+
+class PurchaseOrderReceive(BaseModel):
+    """Payload for ``POST /purchase-orders/{id}/receive``.
+
+    A list of lots covering exactly the PO's lines (every line has at
+    least one lot; no lots for an item not on the PO). A line may be
+    split across multiple lots — see :class:`PurchaseOrderReceiveLine`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[PurchaseOrderReceiveLine] = Field(min_length=1)
 
 
 class PurchaseOrderLineRead(BaseModel):

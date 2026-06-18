@@ -38,13 +38,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.models.batch import SHIPPABLE_BATCH_STATUSES
 from app.models.sales_order import SalesOrder, SalesOrderItem, SalesOrderStatus
 from app.models.stock_movement import (
     REFERENCE_TYPE_SALES_ORDER,
     MovementDirection,
     MovementReason,
 )
+from app.repositories.batch_repo import BatchRepository
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.item_repo import ItemRepository
 from app.repositories.sales_order_repo import SalesOrderRepository
@@ -64,6 +66,7 @@ class SalesOrderService:
         self._sos = SalesOrderRepository(session)
         self._customers = CustomerRepository(session)
         self._items = ItemRepository(session)
+        self._batches = BatchRepository(session)
         self._movements = StockMovementService(session)
 
     # ------------------------------------------------------------------
@@ -109,6 +112,22 @@ class SalesOrderService:
                     code="ITEM_NOT_FOUND",
                 )
 
+            # Optional chosen lot (#9): must exist and belong to this item.
+            # Stock/expiry are *not* checked here — like quantity, that is
+            # enforced at ship, so a DRAFT can be raised before stock lands.
+            if line.batch_id is not None:
+                batch = await self._batches.get_by_id(line.batch_id)
+                if batch is None:
+                    raise NotFoundError(
+                        f"Batch not found: {line.batch_id}",
+                        code="BATCH_NOT_FOUND",
+                    )
+                if batch.item_id != line.item_id:
+                    raise ValidationError(
+                        f"Batch {line.batch_id} does not belong to item {line.item_id}",
+                        code="BATCH_ITEM_MISMATCH",
+                    )
+
             # Phase 1 pricing: explicit > item.unit_price. No
             # customer-specific pricing table exists yet.
             unit_price = line.unit_price if line.unit_price is not None else item.unit_price
@@ -119,6 +138,7 @@ class SalesOrderService:
             resolved_lines.append(
                 SalesOrderItem(
                     item_id=line.item_id,
+                    batch_id=line.batch_id,
                     quantity=line.quantity,
                     unit_price=unit_price,
                     line_total=line_total,
@@ -210,14 +230,20 @@ class SalesOrderService:
 
         1. ``SELECT ... FOR UPDATE`` the SO (idempotency lock).
         2. 404 if missing; 409 ``SO_NOT_DRAFT`` if status != DRAFT.
-        3. For each line (ordered by ``item_id``):
-           ``record_movement(OUT, SALE, reference_type='SALES_ORDER',
-           reference_id=so.id, quantity=line.quantity, remarks='SO {n}')``.
-           ``record_movement`` raises 409 ``INSUFFICIENT_STOCK`` if
-           a line would push stock below zero — that propagates and
-           rolls back **all** prior lines plus the SO header change.
+        3. For each line (ordered by ``item_id``): if the line names a lot
+           (#9), consume that exact lot (:meth:`_consume_line_from_batch`);
+           otherwise consume the item's lots **First-Expiry-First-Out**
+           (:meth:`_consume_line_fefo`). Either way one OUT movement per lot
+           touched (each carrying ``batch_id``). If the lot(s) can't cover the
+           line, raise 409 ``INSUFFICIENT_STOCK`` — that propagates and rolls
+           back **all** prior lines plus the SO header change.
         4. Update SO header.
         5. Single commit. Refresh.
+
+        Pharma rule: only lot-tracked, non-expired stock can ship. If an
+        item has stock that isn't in any lot, that portion is *not*
+        shippable — shipping untraceable stock is exactly what this
+        system exists to prevent.
         """
         so = await self._sos.get_by_id_for_update(so_id)
         if so is None:
@@ -236,6 +262,7 @@ class SalesOrderService:
         # including against concurrent PO receives.
         lines_sorted = sorted(so.items, key=lambda li: li.item_id)
         remarks = f"SO {so.so_number}"
+        today = date.today()
 
         # Atomicity guard: any failure between the first record_movement
         # flush and the final commit (typically INSUFFICIENT_STOCK from
@@ -244,20 +271,19 @@ class SalesOrderService:
         # We can't rely on the caller's session context manager to do
         # this; the service owns the contract.
         try:
+            movement_count = 0
             for line in lines_sorted:
-                await self._movements.record_movement(
-                    item_id=line.item_id,
-                    direction=MovementDirection.OUT,
-                    reason=MovementReason.SALE,
-                    quantity=line.quantity,
-                    actor_id=actor_id,
-                    reference_type=REFERENCE_TYPE_SALES_ORDER,
-                    reference_id=so.id,
-                    remarks=remarks,
-                )
+                if line.batch_id is not None:
+                    movement_count += await self._consume_line_from_batch(
+                        line, so=so, actor_id=actor_id, as_of=today, remarks=remarks
+                    )
+                else:
+                    movement_count += await self._consume_line_fefo(
+                        line, so=so, actor_id=actor_id, as_of=today, remarks=remarks
+                    )
 
             so.status = SalesOrderStatus.SHIPPED
-            so.shipped_date = date.today()
+            so.shipped_date = today
             so.updated_by_user_id = actor_id
 
             await self._session.commit()
@@ -274,7 +300,128 @@ class SalesOrderService:
                 "so_id": str(so.id),
                 "so_number": so.so_number,
                 "line_count": len(lines_sorted),
+                "movement_count": movement_count,
                 "actor_id": str(actor_id),
             },
         )
         return so
+
+    async def _consume_line_fefo(
+        self,
+        line: SalesOrderItem,
+        *,
+        so: SalesOrder,
+        actor_id: uuid.UUID,
+        as_of: date,
+        remarks: str,
+    ) -> int:
+        """Consume one SO line's quantity from the item's lots, FEFO.
+
+        Returns the number of OUT movements written (one per lot touched).
+        Raises 409 ``INSUFFICIENT_STOCK`` if the item's **released**,
+        non-expired lots can't cover the line — quarantine-held or otherwise
+        non-shippable stock is excluded, and any uncovered portion may be
+        untraceable (unbatched) stock, which a pharma system must not ship.
+
+        Traceability: every lot touched is recorded on its own
+        ``stock_movements`` row (carrying ``batch_id``). When the whole line
+        is satisfied from a **single** lot, that lot is also written back to
+        ``sales_order_items.batch_id`` so the order line itself shows where
+        the stock came from; a line split across several lots leaves the line
+        ``batch_id`` NULL (one column can't name many lots) and the full
+        split lives in the movement ledger.
+        """
+        lots = await self._batches.list_consumable_for_item(line.item_id, as_of=as_of)
+        available = sum((lot.quantity for lot in lots), Decimal("0"))
+        if available < line.quantity:
+            raise ConflictError(
+                f"Insufficient lot-tracked stock for item {line.item_id}: "
+                f"{available} available across released, non-expired lots, "
+                f"{line.quantity} requested",
+                code="INSUFFICIENT_STOCK",
+            )
+
+        remaining = line.quantity
+        movements = 0
+        lots_touched: list[uuid.UUID] = []
+        for lot in lots:
+            if remaining <= 0:
+                break
+            take = min(remaining, lot.quantity)
+            # Decrement the lot, then record the OUT movement (which locks the
+            # item row and decrements items.stock_quantity by the same amount,
+            # keeping Σ lot qty ≤ item stock invariant intact).
+            lot.quantity -= take
+            await self._movements.record_movement(
+                item_id=line.item_id,
+                direction=MovementDirection.OUT,
+                reason=MovementReason.SALE,
+                quantity=take,
+                actor_id=actor_id,
+                reference_type=REFERENCE_TYPE_SALES_ORDER,
+                reference_id=so.id,
+                remarks=remarks,
+                batch_id=lot.id,
+            )
+            remaining -= take
+            movements += 1
+            lots_touched.append(lot.id)
+
+        # Single-lot fulfilment → stamp the lot on the line for at-a-glance
+        # traceability (the line had no operator-chosen lot, or this path
+        # wouldn't run). Multi-lot splits stay NULL — the ledger has the full
+        # breakdown.
+        if len(lots_touched) == 1:
+            line.batch_id = lots_touched[0]
+        return movements
+
+    async def _consume_line_from_batch(
+        self,
+        line: SalesOrderItem,
+        *,
+        so: SalesOrder,
+        actor_id: uuid.UUID,
+        as_of: date,
+        remarks: str,
+    ) -> int:
+        """Consume one SO line from its operator-chosen lot (#9).
+
+        The named lot must (still) exist, belong to the line's item, be
+        non-expired, and hold at least the line quantity — the whole line
+        ships from this single lot. Returns ``1`` (one OUT movement). Raises
+        409 ``BATCH_NOT_SHIPPABLE`` (gone / wrong item / expired) or
+        ``INSUFFICIENT_STOCK`` (lot too small) — both roll back the ship.
+        """
+        assert line.batch_id is not None  # guarded by the caller
+        lot = await self._batches.get_by_id_for_update(line.batch_id)
+        if (
+            lot is None
+            or lot.item_id != line.item_id
+            or lot.expiry_date < as_of
+            or lot.batch_status not in SHIPPABLE_BATCH_STATUSES
+        ):
+            raise ConflictError(
+                f"Chosen lot {line.batch_id} for item {line.item_id} is not shippable "
+                "(missing, wrong item, expired, or rejected/recalled)",
+                code="BATCH_NOT_SHIPPABLE",
+            )
+        if lot.quantity < line.quantity:
+            raise ConflictError(
+                f"Chosen lot {line.batch_id} has {lot.quantity} available, "
+                f"{line.quantity} requested",
+                code="INSUFFICIENT_STOCK",
+            )
+
+        lot.quantity -= line.quantity
+        await self._movements.record_movement(
+            item_id=line.item_id,
+            direction=MovementDirection.OUT,
+            reason=MovementReason.SALE,
+            quantity=line.quantity,
+            actor_id=actor_id,
+            reference_type=REFERENCE_TYPE_SALES_ORDER,
+            reference_id=so.id,
+            remarks=remarks,
+            batch_id=lot.id,
+        )
+        return 1

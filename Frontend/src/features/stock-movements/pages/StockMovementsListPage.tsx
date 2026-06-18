@@ -5,12 +5,13 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Pager } from '@/components/ui/Pager';
+import { useBatchesList } from '@/features/batches/hooks/useBatches';
 import { useCustomersList } from '@/features/customers/hooks/useCustomers';
 import { useItemsList } from '@/features/items/hooks/useItems';
 import { usePurchaseOrdersList } from '@/features/purchase-orders/hooks/usePurchaseOrders';
 import { useSalesOrdersList } from '@/features/sales-orders/hooks/useSalesOrders';
 import { useVendorsList } from '@/features/vendors/hooks/useVendors';
-import type { Customer, Item, PurchaseOrder, SalesOrder, Vendor } from '@/types/api.types';
+import type { Batch, Customer, Item, PurchaseOrder, SalesOrder, Vendor } from '@/types/api.types';
 import type { MovementDirection, MovementReason } from '@/types/enums';
 
 import { ManualAdjustmentModal } from '../components/ManualAdjustmentModal';
@@ -56,6 +57,14 @@ export function StockMovementsListPage(): JSX.Element {
   const soQuery = useSalesOrdersList({ limit: 100, offset: 0 });
   const vendorsQuery = useVendorsList({ limit: 100, offset: 0 });
   const customersQuery = useCustomersList({ limit: 100, offset: 0 });
+
+  // Resolve a movement's batch_id → batch number for the Lot column (first 100,
+  // mirroring the other lookups). PO receive / SO ship set batch_id; manual
+  // adjustments leave it null.
+  const batchesQuery = useBatchesList({ limit: 100, offset: 0 });
+  const batchMap = useMemo(() => byId<Batch>(batchesQuery.data?.items), [batchesQuery.data]);
+  const lot = (m: { batch_id: string | null }): string =>
+    m.batch_id ? (batchMap.get(m.batch_id)?.batch_number ?? '—') : '—';
 
   const partyMaps = useMemo<PartyMaps>(
     () => ({
@@ -111,6 +120,7 @@ export function StockMovementsListPage(): JSX.Element {
             loading={query.isPending}
             itemName={(id) => itemMap.get(id)?.name ?? '—'}
             party={(m) => movementParty(m, partyMaps)}
+            lot={lot}
             onAdjust={() => setAdjustOpen(true)}
           />
           {query.data && query.data.total > 0 && (

@@ -1,35 +1,17 @@
 import { describe, it, expect } from 'vitest';
 
-import type { Item, PurchaseOrder } from '@/types/api.types';
+import type { PurchaseOrder } from '@/types/api.types';
 
 import { EMPTY_PO } from './po.schema';
 import {
+  emptyReceiveLot,
   estimatedTotal,
   lineTotal,
   poStatusBadge,
-  receiveDeltas,
+  receiveDefaults,
   toPoCreatePayload,
+  toReceivePayload,
 } from './po.transform';
-
-function item(overrides: Partial<Item> = {}): Item {
-  return {
-    id: 'i1',
-    sku: 'RAW-1',
-    name: 'Raw Steel',
-    description: null,
-    type: 'RAW',
-    category: null,
-    unit_of_measure: 'kg',
-    stock_quantity: '0',
-    reorder_threshold: null,
-    unit_price: '0',
-    status: 'NO_STOCK',
-    is_active: true,
-    created_at: '',
-    updated_at: '',
-    ...overrides,
-  };
-}
 
 describe('poStatusBadge', () => {
   it('maps status', () => {
@@ -79,12 +61,80 @@ describe('toPoCreatePayload', () => {
   });
 });
 
-describe('receiveDeltas', () => {
-  it('builds +qty unit name lines, resolving item names', () => {
-    const po = {
-      items: [{ item_id: 'i1', quantity: '100' }],
-    } as PurchaseOrder;
-    const map = new Map<string, Item>([['i1', item({ name: 'Raw Steel', unit_of_measure: 'kg' })]]);
-    expect(receiveDeltas(po, map)).toEqual([{ itemId: 'i1', label: '+100 kg Raw Steel' }]);
+describe('receiveDefaults / toReceivePayload', () => {
+  const po = {
+    items: [
+      { id: 'l1', item_id: 'i1', quantity: '100' },
+      { id: 'l2', item_id: 'i2', quantity: '50' },
+    ],
+  } as PurchaseOrder;
+
+  it('seeds one lot row per PO line, quantity prefilled to the full line qty', () => {
+    expect(receiveDefaults(po)).toEqual({
+      lines: [
+        { item_id: 'i1', batch_number: '', expiry_date: '', quantity: '100', manufacturing_date: '', storage_location: '' },
+        { item_id: 'i2', batch_number: '', expiry_date: '', quantity: '50', manufacturing_date: '', storage_location: '' },
+      ],
+    });
+  });
+
+  it('emptyReceiveLot makes a blank extra lot bound to an item', () => {
+    expect(emptyReceiveLot('i9')).toEqual({
+      item_id: 'i9',
+      batch_number: '',
+      expiry_date: '',
+      quantity: '',
+      manufacturing_date: '',
+      storage_location: '',
+    });
+  });
+
+  it('builds the receive body (with per-lot quantity), dropping blank optionals', () => {
+    const payload = toReceivePayload({
+      lines: [
+        {
+          item_id: 'i1',
+          batch_number: 'LOT-A',
+          expiry_date: '2030-01-01',
+          quantity: '100',
+          manufacturing_date: '',
+          storage_location: '',
+        },
+        {
+          item_id: 'i2',
+          batch_number: 'LOT-B',
+          expiry_date: '2031-06-01',
+          quantity: '50',
+          manufacturing_date: '2026-06-01',
+          storage_location: 'Cold Room A',
+        },
+      ],
+    });
+    expect(payload).toEqual({
+      lines: [
+        { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01', quantity: '100' },
+        {
+          item_id: 'i2',
+          batch_number: 'LOT-B',
+          expiry_date: '2031-06-01',
+          quantity: '50',
+          manufacturing_date: '2026-06-01',
+          storage_location: 'Cold Room A',
+        },
+      ],
+    });
+  });
+
+  it('splits one PO line across multiple lots', () => {
+    const payload = toReceivePayload({
+      lines: [
+        { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01', quantity: '60', manufacturing_date: '', storage_location: '' },
+        { item_id: 'i1', batch_number: 'LOT-B', expiry_date: '2031-01-01', quantity: '40', manufacturing_date: '', storage_location: '' },
+      ],
+    });
+    expect(payload.lines).toEqual([
+      { item_id: 'i1', batch_number: 'LOT-A', expiry_date: '2030-01-01', quantity: '60' },
+      { item_id: 'i1', batch_number: 'LOT-B', expiry_date: '2031-01-01', quantity: '40' },
+    ]);
   });
 });

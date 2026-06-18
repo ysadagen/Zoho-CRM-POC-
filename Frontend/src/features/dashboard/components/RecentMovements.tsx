@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 
 import { routes } from '@/app/routes';
 import { Badge } from '@/components/ui/Badge';
@@ -77,7 +78,9 @@ export function RecentMovements(): JSX.Element {
                 <tr key={row.id}>
                   <td className="mono muted">{row.time}</td>
                   <td>
-                    <span className="tbl-link">{row.item}</span>
+                    <Link className="tbl-link" to={`${routes.items}/${row.itemId}`}>
+                      {row.item}
+                    </Link>
                   </td>
                   <td>
                     <Badge variant={row.badgeVariant} dot>
