@@ -152,3 +152,55 @@ export const VisitPriority = {
   LOW: 'LOW',
 } as const;
 export type VisitPriority = (typeof VisitPriority)[keyof typeof VisitPriority];
+
+/** Effort × efficiency quadrant for a rep (`effort_efficiency_scores.quadrant`). */
+export const EffortQuadrant = {
+  HIGH_EFFORT_HIGH_EFFICIENCY: 'HIGH_EFFORT_HIGH_EFFICIENCY',
+  HIGH_EFFORT_LOW_EFFICIENCY: 'HIGH_EFFORT_LOW_EFFICIENCY',
+  LOW_EFFORT_HIGH_EFFICIENCY: 'LOW_EFFORT_HIGH_EFFICIENCY',
+  LOW_EFFORT_LOW_EFFICIENCY: 'LOW_EFFORT_LOW_EFFICIENCY',
+} as const;
+export type EffortQuadrant = (typeof EffortQuadrant)[keyof typeof EffortQuadrant];
+
+/* ============================================================
+ *  Lead + activity enums (Backend 2A — leads/activities live on the Backend)
+ * ============================================================ */
+
+/** Lead funnel stage (`leads.stage`). */
+export const LeadStage = {
+  NEW: 'NEW',
+  QUALIFICATION: 'QUALIFICATION',
+  NEGOTIATION: 'NEGOTIATION',
+  WON: 'WON',
+  LOST: 'LOST',
+} as const;
+export type LeadStage = (typeof LeadStage)[keyof typeof LeadStage];
+
+/** Where a lead came from (`leads.source`). */
+export const LeadSource = {
+  PHONE_IN: 'PHONE_IN',
+  WALK_IN: 'WALK_IN',
+  REFERENCE: 'REFERENCE',
+  CAMPAIGN: 'CAMPAIGN',
+  FIELD_VISIT: 'FIELD_VISIT',
+  OTHER: 'OTHER',
+} as const;
+export type LeadSource = (typeof LeadSource)[keyof typeof LeadSource];
+
+/** Rep's judgement of account potential (`leads.dealer_potential`). */
+export const DealerPotential = {
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW',
+} as const;
+export type DealerPotential = (typeof DealerPotential)[keyof typeof DealerPotential];
+
+/** Kind of sales activity (`sales_activities.type`). */
+export const ActivityType = {
+  VISIT: 'VISIT',
+  MEETING: 'MEETING',
+  FOLLOW_UP: 'FOLLOW_UP',
+  CALL: 'CALL',
+  COMPLAINT: 'COMPLAINT',
+} as const;
+export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];

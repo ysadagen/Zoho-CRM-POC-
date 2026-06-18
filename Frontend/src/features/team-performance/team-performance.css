@@ -1,0 +1,70 @@
+/* Layout-only rules for Team Performance. No brand colours here — points
+ * reuse design-system variables via inline `background` set from the
+ * quadrant→CSS-variable map in QuadrantScatter.tsx. */
+
+.qs-plot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+
+/* Threshold lines at the 60/60 split (40% from the top for the y line). */
+.qs-vline,
+.qs-hline {
+  position: absolute;
+  background: var(--line-2);
+}
+.qs-vline {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.qs-hline {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.qs-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  transform: translate(-50%, 50%);
+  cursor: pointer;
+}
+
+.qs-point {
+  position: absolute;
+  transform: translate(-50%, 50%);
+}
+.qs-point .qs-label {
+  position: absolute;
+  left: 12px;
+  top: -8px;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.qs-axis-x,
+.qs-axis-y {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.qs-axis-y {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.qs-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}

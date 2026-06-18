@@ -22,6 +22,11 @@ import { SalesOrdersListPage } from '@/features/sales-orders/pages/SalesOrdersLi
 import { BatchesListPage } from '@/features/batches/pages/BatchesListPage';
 import { StockMovementsListPage } from '@/features/stock-movements/pages/StockMovementsListPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
+import { LeadsListPage } from '@/features/leads/pages/LeadsListPage';
+import { LeadDetailPage } from '@/features/leads/pages/LeadDetailPage';
+import { CustomerHealthPage } from '@/features/customer-health/pages/CustomerHealthPage';
+import { TeamPerformancePage } from '@/features/team-performance/pages/TeamPerformancePage';
+import { BeatPlanPage } from '@/features/beat-plan/pages/BeatPlanPage';
 
 import { routes } from './routes';
 
@@ -55,6 +60,11 @@ export function AppRouter(): JSX.Element {
           <Route path={`${routes.salesOrders}/:id`} element={<SalesOrderDetailPage />} />
           <Route path={routes.batches} element={<BatchesListPage />} />
           <Route path={routes.stockMovements} element={<StockMovementsListPage />} />
+          <Route path={routes.leads} element={<LeadsListPage />} />
+          <Route path={`${routes.leads}/:id`} element={<LeadDetailPage />} />
+          <Route path={routes.customerHealth} element={<CustomerHealthPage />} />
+          <Route path={routes.teamPerformance} element={<TeamPerformancePage />} />
+          <Route path={routes.beatPlan} element={<BeatPlanPage />} />
           <Route path={routes.settings} element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

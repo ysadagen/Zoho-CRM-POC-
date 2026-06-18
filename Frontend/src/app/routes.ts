@@ -14,4 +14,9 @@ export const routes = {
   settings: '/settings',
   login: '/login',
   register: '/register',
+  // Phase 2C — intelligence surfaces.
+  leads: '/leads',
+  customerHealth: '/customer-health',
+  teamPerformance: '/team-performance',
+  beatPlan: '/beat-plan',
 } as const;

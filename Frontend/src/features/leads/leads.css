@@ -1,0 +1,33 @@
+/* Leads feature — layout-only rules (no colours/typography; those come from
+   the design system in globals.css). */
+
+/* Score breakdown: label | bar | value */
+.lead-score-row {
+  display: grid;
+  grid-template-columns: 9.5rem 1fr 2.25rem;
+  align-items: center;
+  gap: 8px;
+}
+.lead-score-row .val {
+  text-align: right;
+}
+
+/* Detail page: info grid + score panel side by side on wide screens. */
+.lead-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 900px) {
+  .lead-detail-grid {
+    grid-template-columns: 1.4fr 1fr;
+    align-items: start;
+  }
+}
+
+/* Definition rows for the lead info card. */
+.lead-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+}

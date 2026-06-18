@@ -17,6 +17,10 @@ export const NAV_ITEMS: NavItem[] = [
   { to: routes.vendors, label: 'Vendors', icon: 'truck' },
   { to: routes.batches, label: 'Batches', icon: 'package' },
   { to: routes.stockMovements, label: 'Stock Movements', icon: 'swap' },
+  { to: routes.leads, label: 'Leads', icon: 'bell' },
+  { to: routes.customerHealth, label: 'Customer Health', icon: 'eye' },
+  { to: routes.teamPerformance, label: 'Team Performance', icon: 'sync' },
+  { to: routes.beatPlan, label: 'Beat Plan', icon: 'arrowRight' },
   { to: routes.settings, label: 'Settings', icon: 'cog' },
 ];
 

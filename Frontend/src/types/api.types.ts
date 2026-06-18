@@ -9,11 +9,18 @@
  */
 
 import type {
+  ActivityType,
   BatchStatus,
+  DealerPotential,
   DosageForm,
   DrugSchedule,
+  EffortQuadrant,
+  HealthClassification,
   ItemStatus,
   ItemType,
+  LeadClassification,
+  LeadSource,
+  LeadStage,
   MaterialClassification,
   MovementDirection,
   MovementReason,
@@ -22,6 +29,7 @@ import type {
   PurchaseOrderStatus,
   SalesOrderStatus,
   StorageCondition,
+  VisitPriority,
 } from './enums';
 
 /* ============================================================
@@ -433,4 +441,262 @@ export interface SalesOrderCreateRequest {
   expected_delivery_date?: string;
   notes?: string;
   items: SalesOrderCreateLine[];
+}
+
+/* ============================================================
+ *  Leads + activities (Backend 2A — http://localhost:8000)
+ * ============================================================ */
+
+export interface Lead {
+  id: string;
+  lead_number: string;
+  stage: LeadStage;
+  contact_name: string;
+  source: LeadSource;
+  assigned_to_user_id: string;
+  customer_id: string | null;
+  phone: string | null;
+  email: string | null;
+  item_id: string | null;
+  quantity: string | null;
+  estimated_budget: string | null;
+  dealer_potential: DealerPotential | null;
+  required_by_date: string | null;
+  state: string | null;
+  district: string | null;
+  city: string | null;
+  pincode: string | null;
+  won_value: string | null;
+  won_at: string | null;
+  lost_at: string | null;
+  lost_reason: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_by_user_id: string;
+  updated_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadStageHistoryEntry {
+  id: string;
+  from_stage: LeadStage | null;
+  to_stage: LeadStage;
+  changed_at: string;
+  changed_by_user_id: string;
+  remark: string | null;
+}
+
+export interface LeadDetail extends Lead {
+  stage_history: LeadStageHistoryEntry[];
+}
+
+export interface LeadCreateRequest {
+  contact_name: string;
+  source: LeadSource;
+  assigned_to_user_id: string;
+  customer_id?: string;
+  phone?: string;
+  email?: string;
+  item_id?: string;
+  quantity?: string;
+  estimated_budget?: string;
+  dealer_potential?: DealerPotential;
+  required_by_date?: string;
+  state?: string;
+  district?: string;
+  city?: string;
+  pincode?: string;
+  notes?: string;
+}
+
+export type LeadUpdateRequest = Partial<LeadCreateRequest> & { is_active?: boolean };
+
+export interface StageTransitionRequest {
+  to_stage: LeadStage;
+  remark?: string;
+  won_value?: string;
+  lost_reason?: string;
+}
+
+export interface Activity {
+  id: string;
+  type: ActivityType;
+  rep_user_id: string;
+  customer_id: string | null;
+  lead_id: string | null;
+  occurred_at: string;
+  duration_minutes: number | null;
+  remarks: string | null;
+  created_by_user_id: string;
+  created_at: string;
+}
+
+export interface ActivityCreateRequest {
+  type: ActivityType;
+  occurred_at: string;
+  rep_user_id?: string;
+  customer_id?: string;
+  lead_id?: string;
+  duration_minutes?: number;
+  remarks?: string;
+}
+
+/* ============================================================
+ *  Intelligence service score reads (http://localhost:8002)
+ *  Read live; numeric scores arrive as JSON numbers (not Decimal strings).
+ * ============================================================ */
+
+export interface LeadScoreComponents {
+  urgency: number;
+  location: number;
+  contribution_margin: number;
+  quantity: number;
+  product_margin: number;
+}
+
+export interface LeadScore {
+  lead_id: string;
+  config_version: number;
+  computed_at: string;
+  components: LeadScoreComponents;
+  total_score: number;
+  classification: LeadClassification;
+  defaults_applied: string[];
+}
+
+export interface LeadScoreListItem extends LeadScore {
+  lead_number: string;
+  contact_name: string;
+  assigned_to_user_id: string;
+}
+
+export interface LeadScoreList {
+  items: LeadScoreListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface LeadScoreDetail extends LeadScore {
+  history: LeadScore[];
+}
+
+export interface CustomerHealthCpsComponents {
+  volume_achievement: number;
+  payment_discipline: number;
+  engagement: number;
+  growth_trend: number;
+  margin_quality: number;
+}
+
+export interface CustomerHealthCrsComponents {
+  volume_decline: number;
+  payment_risk: number;
+  competitive_risk: number;
+  engagement_gap: number;
+  service_risk: number;
+}
+
+export interface CustomerHealth {
+  customer_id: string;
+  company_name: string;
+  computed_at: string;
+  weight_profile: string;
+  cps: number;
+  crs: number;
+  cps_components: CustomerHealthCpsComponents;
+  crs_components: CustomerHealthCrsComponents;
+  health_score: number;
+  classification: HealthClassification;
+  defaults_applied: string[];
+}
+
+export interface CustomerHealthList {
+  items: CustomerHealth[];
+  total: number;
+}
+
+export interface CustomerHealthSnapshot {
+  computed_at: string;
+  cps: number;
+  crs: number;
+  health_score: number;
+  classification: HealthClassification;
+}
+
+export interface CustomerHealthDetail extends CustomerHealth {
+  history: CustomerHealthSnapshot[];
+}
+
+export interface EffortEfficiencyComponents {
+  stage_change_rate: number;
+  won_rate: number;
+  revenue_efficiency: number;
+  time_to_close: number;
+  lead_score_utilization: number;
+}
+
+export interface EffortActivityCounts {
+  visits: number;
+  meetings: number;
+  follow_ups: number;
+  calls: number;
+  hours_logged: number;
+}
+
+export interface EffortEfficiency {
+  rep_user_id: string;
+  rep_email: string;
+  period_start: string;
+  period_end: string;
+  activity_counts: EffortActivityCounts;
+  effort_raw: number;
+  effort_score: number;
+  efficiency_components: EffortEfficiencyComponents;
+  efficiency_score: number;
+  efficiency_band: string;
+  quadrant: EffortQuadrant;
+}
+
+export interface EffortEfficiencyList {
+  items: EffortEfficiency[];
+  total: number;
+  period_start: string;
+  period_end: string;
+}
+
+export interface BeatCustomerBreakdown {
+  revenue_score: number;
+  visit_gap_score: number;
+  customer_type_score: number;
+  location_density_score: number;
+}
+
+export interface BeatCustomer {
+  customer_id: string;
+  company_name: string;
+  district: string | null;
+  customer_type: string;
+  vps: number;
+  priority: VisitPriority;
+  breakdown: BeatCustomerBreakdown;
+  days_since_last_visit: number | null;
+  revenue_90d: string;
+}
+
+export interface BeatCluster {
+  district: string;
+  customer_count: number;
+  lds: number;
+  cluster_opportunity: boolean;
+}
+
+export interface BeatPlan {
+  rep_user_id: string;
+  generated_at: string;
+  max_visits: number;
+  clusters: BeatCluster[];
+  suggested_beat: BeatCustomer[];
+  all_customers: BeatCustomer[];
 }

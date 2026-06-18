@@ -9,7 +9,11 @@ import { renderWithProviders } from '@/test/utils';
 import { ManualAdjustmentModal } from './ManualAdjustmentModal';
 
 const BASE = 'http://localhost:8000/api/v1';
-const server = setupServer();
+const emptyList = () => HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 });
+
+// Selecting an item fetches its lots; default to none unless a test provides
+// lots of its own (a per-test server.use takes precedence over this default).
+const server = setupServer(http.get(`${BASE}/batches`, emptyList));
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => server.resetHandlers());

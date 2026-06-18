@@ -8,6 +8,7 @@ import { Menu, MenuLinkItem } from '@/components/ui/Menu';
 import { formatLongDate } from '@/lib/format';
 
 import { CrmSyncCard } from '../components/CrmSyncCard';
+import { IntelligenceSummary } from '../components/IntelligenceSummary';
 import { KpiRow } from '../components/KpiRow';
 import { NeedsAttention } from '../components/NeedsAttention';
 import { QuickActions } from '../components/QuickActions';
@@ -51,6 +52,8 @@ export function DashboardPage(): JSX.Element {
       />
 
       <KpiRow />
+
+      <IntelligenceSummary />
 
       <div className="dash-grid">
         <div className="flex col gap-16">

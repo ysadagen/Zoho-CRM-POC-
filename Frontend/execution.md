@@ -1133,6 +1133,53 @@ npm run verify                           # lint + build + full suite
 
 ---
 
+## Phase 2C.2–2C.7 — Intelligence surfaces ✅ SHIPPED
+
+The five intelligence screens (UI_SPECIFICATION "Phase 2C"). Scores are read
+live from the **Intelligence service** (`env.intelligenceBaseUrl`, :8002) via
+the single axios client with a per-request `baseURL` override; CRM data
+(leads, activities) stays on the Backend (:8000). All routes are gated by
+`ProtectedRoute` and added to `navItems`.
+
+- **2C.2 Leads** (`features/leads/`) — list (Backend `/leads`) with stage +
+  Hot/Medium/Cold badges (joined from Intelligence `/lead-scores`), stage +
+  classification filters; create/edit drawer (RHF+Zod, assigned to the
+  session user); detail page with the five-parameter score breakdown
+  (`LeadScorePanel`, + a "defaults applied" notice) and a guarded
+  `StageTransitionModal` (WON needs a value, LOST a reason; legal moves only).
+- **2C.3 Activities** (`features/activities/`) — `LogActivityModal` (RHF+Zod,
+  Request-ID danger toast) + `ActivityTimeline`, wired into the lead detail.
+- **2C.4 Customer Health** (`features/customer-health/`) — classification
+  table (lowest health first), filter, CPS/CRS breakdown drawer.
+- **2C.5 Team Performance** (`features/team-performance/`) — effort×efficiency
+  quadrant scatter (60/60 thresholds) + per-rep table & drill-down.
+- **2C.6 Beat Plan** (`features/beat-plan/`) — rep selector, district clusters
+  (LDS, opportunity flag), suggested beat + full ranked visit-priority list.
+- **2C.7 Dashboard** — `IntelligenceSummary` widget: hot-lead count, at-risk
+  count (AT_RISK+CRITICAL), and the lead funnel (NEW → … → WON/LOST).
+
+**Connectivity:** decided "single client + second base URL" — no second HTTP
+client; the request-ID / 401 / error-envelope contracts apply to Intelligence
+calls unchanged.
+
+**Verification:** `npm run verify` clean (lint + build); **376 tests pass**
+(90 files); `npm run test:coverage` thresholds hold (94.3% lines overall).
+
+**Known follow-up (not blocking):** the activity timeline is wired into the
+*lead* detail; adding it to the *customer* detail (a tab) is a small,
+self-contained add deferred to keep this phase focused.
+
+**How to test (you):**
+```powershell
+npm run verify            # lint + build + full suite
+npm run test:coverage     # enforce coverage thresholds
+npm run dev               # then browse /leads, /customer-health, /team-performance, /beat-plan
+```
+> The Intelligence service must be running on **8002** (and the Backend on
+> 8000) for the score-backed screens to load live data.
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.
