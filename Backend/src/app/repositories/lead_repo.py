@@ -91,6 +91,11 @@ class LeadRepository:
         await self._session.flush()
         return history
 
+    async def list_all_active(self) -> list[Lead]:
+        """Every active lead (unpaginated) — for the recompute sweep."""
+        stmt = select(Lead).where(Lead.is_active.is_(True)).order_by(Lead.created_at)
+        return list((await self._session.execute(stmt)).scalars().all())
+
     async def cohort_max_quantity(
         self, *, created_since: date, item_type: ItemType | None
     ) -> Decimal | None:

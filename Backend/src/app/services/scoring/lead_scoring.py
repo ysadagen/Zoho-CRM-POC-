@@ -211,15 +211,12 @@ class LeadScoringService:
         self._leads = LeadRepository(session)
         self._items = ItemRepository(session)
 
-    async def score_lead(self, lead: Lead, *, today: date | None = None) -> LeadScore:
-        """Compute and persist an append-only score snapshot for ``lead``."""
-        as_of = today or date.today()
-        config_id, params = await self._configs.load_active_params(ScoringEngine.LEAD_SCORING)
-        inputs = await self._gather_inputs(lead, params, as_of)
-        result = compute_lead_score(inputs, params)
-
-        score = LeadScore(
-            lead_id=lead.id,
+    @staticmethod
+    def _to_snapshot(
+        lead_id: uuid.UUID, config_id: uuid.UUID, result: LeadScoreResult
+    ) -> LeadScore:
+        return LeadScore(
+            lead_id=lead_id,
             config_id=config_id,
             urgency_score=result.urgency,
             location_score=result.location,
@@ -230,7 +227,15 @@ class LeadScoringService:
             classification=LeadClassification(result.classification),
             defaults_applied=result.defaults_applied,
         )
-        score = await self._snapshots.add_lead_score(score)
+
+    async def score_lead(self, lead: Lead, *, today: date | None = None) -> LeadScore:
+        """Compute and persist an append-only score snapshot for ``lead``."""
+        as_of = today or date.today()
+        config_id, params = await self._configs.load_active_params(ScoringEngine.LEAD_SCORING)
+        inputs = await self._gather_inputs(lead, params, as_of)
+        result = compute_lead_score(inputs, params)
+
+        score = await self._snapshots.add_lead_score(self._to_snapshot(lead.id, config_id, result))
         await self._session.commit()
         await self._session.refresh(score)
         logger.info(
@@ -243,6 +248,23 @@ class LeadScoringService:
             },
         )
         return score
+
+    async def recompute_all(self, *, today: date | None = None) -> int:
+        """Re-score every active lead in one transaction (recompute sweep).
+
+        Reconciles cohort drift — a new larger lead changes everyone's quantity
+        ratio (§4.7) — by snapshotting all leads against the active config.
+        """
+        as_of = today or date.today()
+        config_id, params = await self._configs.load_active_params(ScoringEngine.LEAD_SCORING)
+        leads = await self._leads.list_all_active()
+        for lead in leads:
+            inputs = await self._gather_inputs(lead, params, as_of)
+            result = compute_lead_score(inputs, params)
+            self._session.add(self._to_snapshot(lead.id, config_id, result))
+        await self._session.commit()
+        logger.info("lead_scores_recomputed", extra={"count": len(leads)})
+        return len(leads)
 
     async def list_latest(
         self,

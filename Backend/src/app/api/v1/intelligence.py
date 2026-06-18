@@ -8,6 +8,7 @@ This module grows over Phase 2B; 2B.0 wires the scoring-config admin surface
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import UTC, date, datetime
 from typing import Annotated
@@ -33,6 +34,8 @@ from app.schemas.intelligence import (
     LeadScoreList,
     LeadScoreListItem,
     LeadScoreOut,
+    RecomputeOut,
+    RecomputeRequest,
     ScoringConfigCreate,
     ScoringConfigList,
     ScoringConfigOut,
@@ -42,6 +45,7 @@ from app.services.scoring.config_service import ScoringConfigService
 from app.services.scoring.customer_health import CustomerHealthService
 from app.services.scoring.effort_efficiency import EffortEfficiencyService
 from app.services.scoring.lead_scoring import LeadScoringService
+from app.services.scoring.recompute_service import RecomputeService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
@@ -251,3 +255,22 @@ async def create_config(
         actor_id=current_user.id,
     )
     return ScoringConfigOut.model_validate(config)
+
+
+@router.post(
+    "/recompute",
+    response_model=RecomputeOut,
+    summary="Recompute + snapshot scores for one or all engines (admin)",
+)
+async def recompute(
+    payload: RecomputeRequest,
+    session: _Session,
+    current_user: _AdminUser,
+) -> RecomputeOut:
+    """Synchronously recompute and snapshot every active entity for the given
+    ``engine`` (or all four when null). Returns per-engine counts and the
+    run's wall-clock duration. Intended for a nightly scheduled call."""
+    started = time.perf_counter()
+    results = await RecomputeService(session).recompute(payload.engine)
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    return RecomputeOut(results=results, duration_ms=duration_ms)

@@ -52,6 +52,8 @@ __all__ = [
     "LeadScoreList",
     "LeadScoreListItem",
     "LeadScoreOut",
+    "RecomputeOut",
+    "RecomputeRequest",
     "ScoringConfigCreate",
     "ScoringConfigList",
     "ScoringConfigOut",
@@ -419,3 +421,18 @@ class ScoringConfigCreate(BaseModel):
     engine: ScoringEngine
     params: dict[str, Any]
     description: str | None = None
+
+
+class RecomputeRequest(BaseModel):
+    """Recompute one engine, or all engines when ``engine`` is null (§8)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    engine: ScoringEngine | None = None
+
+
+class RecomputeOut(BaseModel):
+    """Per-engine entity counts and wall-clock duration of a recompute run."""
+
+    results: dict[str, int]
+    duration_ms: float
