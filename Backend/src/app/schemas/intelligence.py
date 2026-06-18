@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
@@ -18,6 +19,7 @@ from app.models.score_snapshot import (
     EffortQuadrant,
     HealthClassification,
     LeadClassification,
+    VisitPriority,
 )
 from app.models.scoring_config import ScoringEngine
 
@@ -25,10 +27,18 @@ if TYPE_CHECKING:
     from app.models.customer import Customer
     from app.models.lead import Lead
     from app.models.score_snapshot import CustomerHealthScore, EffortEfficiencyScore, LeadScore
+    from app.services.scoring.beat_planning import (
+        BeatCluster,
+        BeatCustomerResult,
+        BeatPlanResult,
+    )
     from app.services.scoring.customer_health import CustomerHealthResult
     from app.services.scoring.effort_efficiency import RepEffortResult
 
 __all__ = [
+    "BeatClusterOut",
+    "BeatCustomerOut",
+    "BeatPlanOut",
     "CustomerHealthDetailOut",
     "CustomerHealthList",
     "CustomerHealthOut",
@@ -306,6 +316,94 @@ class EffortEfficiencyDetailOut(EffortEfficiencyOut):
         return cls(
             **base.model_dump(),
             history=[EffortEfficiencySnapshotOut.model_validate(h) for h in history],
+        )
+
+
+class BeatCustomerBreakdown(BaseModel):
+    """The four VPS sub-scores (each 0-100)."""
+
+    revenue_score: int
+    visit_gap_score: int
+    customer_type_score: int
+    location_density_score: int
+
+
+class BeatCustomerOut(BaseModel):
+    """One customer's visit-priority line (§9.6)."""
+
+    customer_id: uuid.UUID
+    company_name: str
+    district: str | None
+    customer_type: str
+    vps: float
+    priority: VisitPriority
+    breakdown: BeatCustomerBreakdown
+    days_since_last_visit: int | None
+    revenue_90d: Decimal
+
+    @classmethod
+    def from_result(cls, r: BeatCustomerResult) -> BeatCustomerOut:
+        return cls(
+            customer_id=r.customer_id,
+            company_name=r.company_name,
+            district=r.district,
+            customer_type=r.customer_type,
+            vps=r.vps,
+            priority=VisitPriority(r.priority),
+            breakdown=BeatCustomerBreakdown(
+                revenue_score=r.revenue_score,
+                visit_gap_score=r.visit_gap_score,
+                customer_type_score=r.customer_type_score,
+                location_density_score=r.location_density_score,
+            ),
+            days_since_last_visit=r.days_since_last_visit,
+            revenue_90d=r.revenue_90d,
+        )
+
+
+class BeatClusterOut(BaseModel):
+    """A district cluster of a rep's customers."""
+
+    district: str
+    customer_count: int
+    lds: float
+    cluster_opportunity: bool
+
+    @classmethod
+    def from_cluster(cls, c: BeatCluster) -> BeatClusterOut:
+        return cls(
+            district=c.district,
+            customer_count=c.customer_count,
+            lds=c.lds,
+            cluster_opportunity=c.cluster_opportunity,
+        )
+
+
+class BeatPlanOut(BaseModel):
+    """The beat-plan payload for a rep (§7.2)."""
+
+    rep_user_id: uuid.UUID
+    generated_at: datetime
+    max_visits: int
+    clusters: list[BeatClusterOut]
+    suggested_beat: list[BeatCustomerOut]
+    all_customers: list[BeatCustomerOut]
+
+    @classmethod
+    def from_result(
+        cls,
+        rep_user_id: uuid.UUID,
+        plan: BeatPlanResult,
+        max_visits: int,
+        generated_at: datetime,
+    ) -> BeatPlanOut:
+        return cls(
+            rep_user_id=rep_user_id,
+            generated_at=generated_at,
+            max_visits=max_visits,
+            clusters=[BeatClusterOut.from_cluster(c) for c in plan.clusters],
+            suggested_beat=[BeatCustomerOut.from_result(c) for c in plan.suggested_beat],
+            all_customers=[BeatCustomerOut.from_result(c) for c in plan.all_customers],
         )
 
 

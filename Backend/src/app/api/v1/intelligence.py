@@ -22,6 +22,7 @@ from app.models.score_snapshot import HealthClassification, LeadClassification
 from app.models.scoring_config import ScoringEngine
 from app.models.user import User
 from app.schemas.intelligence import (
+    BeatPlanOut,
     CustomerHealthDetailOut,
     CustomerHealthList,
     CustomerHealthOut,
@@ -36,6 +37,7 @@ from app.schemas.intelligence import (
     ScoringConfigList,
     ScoringConfigOut,
 )
+from app.services.scoring.beat_planning import BeatPlanningService
 from app.services.scoring.config_service import ScoringConfigService
 from app.services.scoring.customer_health import CustomerHealthService
 from app.services.scoring.effort_efficiency import EffortEfficiencyService
@@ -187,6 +189,26 @@ async def get_effort_efficiency(
         raise NotFoundError("No effort score for this user", code="EFFORT_SCORE_NOT_FOUND")
     history = await service.snapshot_history(user_id)
     return EffortEfficiencyDetailOut.from_result_and_history(match, start, end, history)
+
+
+@router.get(
+    "/beat-plan",
+    response_model=BeatPlanOut,
+    summary="Suggested beat + visit-priority ranking for a rep",
+)
+async def get_beat_plan(
+    session: _Session,
+    current_user: _CurrentUser,
+    rep_user_id: Annotated[uuid.UUID, Query()],
+    max_visits: Annotated[int | None, Query(ge=1, le=50)] = None,
+) -> BeatPlanOut:
+    """Rank the rep's handled customers by Visit Priority Score, cluster by
+    district, and suggest a day's beat (top ``max_visits``, default from the
+    config). 404 if the rep is unknown."""
+    plan, resolved_max = await BeatPlanningService(session).compute_for_rep(
+        rep_user_id, max_visits=max_visits
+    )
+    return BeatPlanOut.from_result(rep_user_id, plan, resolved_max, datetime.now(UTC))
 
 
 @router.get(

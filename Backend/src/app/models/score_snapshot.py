@@ -64,6 +64,15 @@ class EffortQuadrant(StrEnum):
     LOW_EFFORT_LOW_EFFICIENCY = "LOW_EFFORT_LOW_EFFICIENCY"
 
 
+class VisitPriority(StrEnum):
+    """Beat-planning visit-priority band for a customer (per rep)."""
+
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
 class LeadScore(Base):
     """An append-only lead-score snapshot (§3.10)."""
 
@@ -209,6 +218,53 @@ class EffortEfficiencyScore(Base):
             name="effort_quadrant",
             values_callable=lambda e: [m.value for m in e],
         ),
+        nullable=False,
+        index=True,
+    )
+
+
+class VisitPriorityScore(Base):
+    """An append-only beat-planning (visit-priority) snapshot for a customer +
+    rep (§3.10). Live-computed on read; snapshots produced by recompute."""
+
+    __tablename__ = "visit_priority_scores"
+    __table_args__ = (
+        Index(
+            "ix_visit_priority_scores_rep_user_id_computed_at",
+            "rep_user_id",
+            "computed_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rep_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    config_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scoring_configs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    revenue_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    visit_gap_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    customer_type_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    location_density_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    vps: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    priority: Mapped[VisitPriority] = mapped_column(
+        Enum(VisitPriority, name="visit_priority", values_callable=lambda e: [m.value for m in e]),
         nullable=False,
         index=True,
     )

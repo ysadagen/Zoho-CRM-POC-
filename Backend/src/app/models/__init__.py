@@ -22,6 +22,7 @@ from app.models.score_snapshot import (
     CustomerHealthScore,
     EffortEfficiencyScore,
     LeadScore,
+    VisitPriorityScore,
 )
 from app.models.scoring_config import ScoringConfig
 from app.models.stock_movement import StockMovement
@@ -48,4 +49,5 @@ __all__ = [
     "User",
     "Vendor",
     "VendorItemTerm",
+    "VisitPriorityScore",
 ]

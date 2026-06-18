@@ -17,8 +17,10 @@ from decimal import Decimal
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.customer import Customer
 from app.models.invoice import Invoice, Payment
 from app.models.item import Item
+from app.models.lead import Lead
 from app.models.sales_activity import ActivityType, SalesActivity
 from app.models.sales_order import SalesOrder, SalesOrderItem, SalesOrderStatus
 
@@ -157,6 +159,33 @@ class CustomerMetricsRepository:
         )
         total, overdue = (await self._session.execute(stmt)).one()
         return Decimal(total), Decimal(overdue)
+
+    # --- beat planning: handled customers --------------------------------
+
+    async def handled_customers(self, rep_id: uuid.UUID, since: date) -> list[Customer]:
+        """Active customers "handled by" ``rep_id`` since ``since`` (§7.1): at
+        least one activity by the rep, or linked to a lead assigned to the rep.
+        """
+        by_activity = select(SalesActivity.customer_id).where(
+            SalesActivity.rep_user_id == rep_id,
+            SalesActivity.customer_id.is_not(None),
+            SalesActivity.occurred_at >= since,
+        )
+        by_lead = select(Lead.customer_id).where(
+            Lead.assigned_to_user_id == rep_id,
+            Lead.customer_id.is_not(None),
+            Lead.created_at >= since,
+        )
+        handled_ids = by_activity.union(by_lead).subquery()
+        stmt = (
+            select(Customer)
+            .where(
+                Customer.id.in_(select(handled_ids.c.customer_id)),
+                Customer.is_active.is_(True),
+            )
+            .order_by(Customer.company_name)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
 
     # --- activity recency / counts ---------------------------------------
 
