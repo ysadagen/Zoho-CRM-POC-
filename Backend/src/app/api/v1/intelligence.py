@@ -9,6 +9,7 @@ This module grows over Phase 2B; 2B.0 wires the scoring-config admin surface
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
@@ -16,10 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user, require_admin
-from app.models.score_snapshot import LeadClassification
+from app.models.score_snapshot import HealthClassification, LeadClassification
 from app.models.scoring_config import ScoringEngine
 from app.models.user import User
 from app.schemas.intelligence import (
+    CustomerHealthDetailOut,
+    CustomerHealthList,
+    CustomerHealthOut,
     LeadScoreDetailOut,
     LeadScoreList,
     LeadScoreListItem,
@@ -29,6 +33,7 @@ from app.schemas.intelligence import (
     ScoringConfigOut,
 )
 from app.services.scoring.config_service import ScoringConfigService
+from app.services.scoring.customer_health import CustomerHealthService
 from app.services.scoring.lead_scoring import LeadScoringService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
@@ -85,6 +90,49 @@ async def get_lead_score(
     return LeadScoreDetailOut(
         **base.model_dump(),
         history=[LeadScoreOut.from_score(h) for h in history],
+    )
+
+
+@router.get(
+    "/customer-health",
+    response_model=CustomerHealthList,
+    summary="Live health for all active customers",
+)
+async def list_customer_health(
+    session: _Session,
+    current_user: _CurrentUser,
+    classification: Annotated[HealthClassification | None, Query()] = None,
+) -> CustomerHealthList:
+    """Live-compute health for every active customer, lowest health first
+    (most at-risk on top). Filter by ``classification``."""
+    computed_at = datetime.now(UTC)
+    rows = await CustomerHealthService(session).list_live()
+    items = [
+        CustomerHealthOut.from_result(customer, result, computed_at) for customer, result in rows
+    ]
+    if classification is not None:
+        items = [i for i in items if i.classification == classification]
+    items.sort(key=lambda i: i.health_score)
+    return CustomerHealthList(items=items, total=len(items))
+
+
+@router.get(
+    "/customer-health/{customer_id}",
+    response_model=CustomerHealthDetailOut,
+    summary="Live health detail + snapshot trend for one customer",
+)
+async def get_customer_health(
+    customer_id: uuid.UUID,
+    session: _Session,
+    current_user: _CurrentUser,
+) -> CustomerHealthDetailOut:
+    """Live CPS/CRS breakdown plus the snapshot history (trend). 404 if the
+    customer does not exist."""
+    service = CustomerHealthService(session)
+    customer, result = await service.get_live(customer_id)
+    history = await service.snapshot_history(customer_id)
+    return CustomerHealthDetailOut.from_result_and_history(
+        customer, result, datetime.now(UTC), history
     )
 
 

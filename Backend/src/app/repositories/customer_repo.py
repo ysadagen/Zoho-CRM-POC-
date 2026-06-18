@@ -63,6 +63,11 @@ class CustomerRepository:
         page = list((await self._session.execute(page_stmt)).scalars().all())
         return page, int(total)
 
+    async def list_all_active(self) -> list[Customer]:
+        """Every active customer (unpaginated) — for cohort scoring engines."""
+        stmt = select(Customer).where(Customer.is_active.is_(True)).order_by(Customer.company_name)
+        return list((await self._session.execute(stmt)).scalars().all())
+
     async def add(self, customer: Customer) -> Customer:
         """Persist a new customer. Flush so server-side defaults populate."""
         self._session.add(customer)

@@ -14,14 +14,20 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.score_snapshot import LeadClassification
+from app.models.score_snapshot import HealthClassification, LeadClassification
 from app.models.scoring_config import ScoringEngine
 
 if TYPE_CHECKING:
+    from app.models.customer import Customer
     from app.models.lead import Lead
-    from app.models.score_snapshot import LeadScore
+    from app.models.score_snapshot import CustomerHealthScore, LeadScore
+    from app.services.scoring.customer_health import CustomerHealthResult
 
 __all__ = [
+    "CustomerHealthDetailOut",
+    "CustomerHealthList",
+    "CustomerHealthOut",
+    "CustomerHealthSnapshotOut",
     "LeadScoreComponents",
     "LeadScoreDetailOut",
     "LeadScoreList",
@@ -125,6 +131,79 @@ class LeadScoreDetailOut(LeadScoreOut):
     """Latest score plus its full snapshot history (newest first)."""
 
     history: list[LeadScoreOut]
+
+
+class CustomerHealthOut(BaseModel):
+    """Live customer-health score with CPS/CRS component breakdown (§9.6)."""
+
+    customer_id: uuid.UUID
+    company_name: str
+    computed_at: datetime
+    weight_profile: str
+    cps: float
+    crs: float
+    cps_components: dict[str, int]
+    crs_components: dict[str, int]
+    health_score: float
+    classification: HealthClassification
+    defaults_applied: list[str]
+
+    @classmethod
+    def from_result(
+        cls, customer: Customer, result: CustomerHealthResult, computed_at: datetime
+    ) -> CustomerHealthOut:
+        return cls(
+            customer_id=customer.id,
+            company_name=customer.company_name,
+            computed_at=computed_at,
+            weight_profile=result.weight_profile,
+            cps=result.cps,
+            crs=result.crs,
+            cps_components=result.cps_components,
+            crs_components=result.crs_components,
+            health_score=result.health_score,
+            classification=HealthClassification(result.classification),
+            defaults_applied=result.defaults_applied,
+        )
+
+
+class CustomerHealthList(BaseModel):
+    """Envelope for ``GET /intelligence/customer-health`` (lowest health first)."""
+
+    items: list[CustomerHealthOut]
+    total: int
+
+
+class CustomerHealthSnapshotOut(BaseModel):
+    """One historical health snapshot — the trend series."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    computed_at: datetime
+    cps: float
+    crs: float
+    health_score: float
+    classification: HealthClassification
+
+
+class CustomerHealthDetailOut(CustomerHealthOut):
+    """Live health plus the snapshot history (trend, newest first)."""
+
+    history: list[CustomerHealthSnapshotOut]
+
+    @classmethod
+    def from_result_and_history(
+        cls,
+        customer: Customer,
+        result: CustomerHealthResult,
+        computed_at: datetime,
+        history: list[CustomerHealthScore],
+    ) -> CustomerHealthDetailOut:
+        base = CustomerHealthOut.from_result(customer, result, computed_at)
+        return cls(
+            **base.model_dump(),
+            history=[CustomerHealthSnapshotOut.model_validate(h) for h in history],
+        )
 
 
 class ScoringConfigCreate(BaseModel):

@@ -12,7 +12,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lead import Lead
-from app.models.score_snapshot import LeadClassification, LeadScore
+from app.models.score_snapshot import (
+    CustomerHealthScore,
+    LeadClassification,
+    LeadScore,
+)
 
 
 class ScoreSnapshotRepository:
@@ -99,3 +103,19 @@ class ScoreSnapshotRepository:
         rows = (await self._session.execute(page_stmt)).all()
         page = [(row[0], row[1]) for row in rows]
         return page, int(total)
+
+    # --- customer-health scores ------------------------------------------
+
+    async def add_customer_health_score(self, score: CustomerHealthScore) -> CustomerHealthScore:
+        self._session.add(score)
+        await self._session.flush()
+        await self._session.refresh(score)
+        return score
+
+    async def customer_health_history(self, customer_id: uuid.UUID) -> list[CustomerHealthScore]:
+        stmt = (
+            select(CustomerHealthScore)
+            .where(CustomerHealthScore.customer_id == customer_id)
+            .order_by(CustomerHealthScore.computed_at.desc())
+        )
+        return list((await self._session.execute(stmt)).scalars().all())

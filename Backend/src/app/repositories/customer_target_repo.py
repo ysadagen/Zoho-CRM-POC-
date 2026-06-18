@@ -52,6 +52,20 @@ class CustomerTargetRepository:
             stmt = stmt.where(CustomerTarget.id != exclude_id)
         return (await self._session.execute(stmt)).scalars().first()
 
+    async def target_for_date(self, customer_id: uuid.UUID, on_date: date) -> CustomerTarget | None:
+        """The target whose period contains ``on_date`` (``period_start <=
+        on_date < period_end``). Drives customer-health volume achievement."""
+        stmt = (
+            select(CustomerTarget)
+            .where(
+                CustomerTarget.customer_id == customer_id,
+                CustomerTarget.period_start <= on_date,
+                on_date < CustomerTarget.period_end,
+            )
+            .order_by(CustomerTarget.period_start.desc())
+        )
+        return (await self._session.execute(stmt)).scalars().first()
+
     async def add(self, target: CustomerTarget) -> CustomerTarget:
         self._session.add(target)
         await self._session.flush()

@@ -26,6 +26,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    String,
     func,
     text,
 )
@@ -42,6 +43,15 @@ class LeadClassification(StrEnum):
     HOT = "HOT"
     MEDIUM = "MEDIUM"
     COLD = "COLD"
+
+
+class HealthClassification(StrEnum):
+    """Customer-health band."""
+
+    HEALTHY = "HEALTHY"
+    STABLE = "STABLE"
+    AT_RISK = "AT_RISK"
+    CRITICAL = "CRITICAL"
 
 
 class LeadScore(Base):
@@ -89,3 +99,56 @@ class LeadScore(Base):
     # Read-only convenience — lets a read surface the config version without a
     # manual join. Eager so reads never trigger lazy I/O (MissingGreenlet).
     config: Mapped[ScoringConfig] = relationship("ScoringConfig", lazy="selectin")
+
+
+class CustomerHealthScore(Base):
+    """An append-only customer-health snapshot (§3.10).
+
+    ``components`` carries all ten sub-scores as ``{"cps": {...}, "crs": {...}}``.
+    Health is live-computed on read; snapshots exist for trend history and are
+    produced by the recompute endpoint (Decision D-9).
+    """
+
+    __tablename__ = "customer_health_scores"
+    __table_args__ = (
+        Index(
+            "ix_customer_health_scores_customer_id_computed_at",
+            "customer_id",
+            "computed_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    config_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scoring_configs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    cps: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    crs: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    components: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    weight_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    health_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    classification: Mapped[HealthClassification] = mapped_column(
+        Enum(
+            HealthClassification,
+            name="health_classification",
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+        index=True,
+    )
+    defaults_applied: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
