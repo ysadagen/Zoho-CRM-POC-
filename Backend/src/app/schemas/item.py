@@ -70,6 +70,7 @@ class ItemCreate(BaseModel):
     stock_quantity: Decimal = Field(default=Decimal("0"), ge=0)
     reorder_threshold: Decimal | None = Field(default=None, ge=0)
     unit_price: Decimal = Field(ge=0)
+    standard_cost: Decimal | None = Field(default=None, ge=0)
     storage_condition: StorageCondition | None = None
     shelf_life_days: int | None = Field(default=None, ge=0)
     # Subtype detail — at most the block matching ``type`` (the service
@@ -95,6 +96,7 @@ class ItemUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     reorder_threshold: Decimal | None = Field(default=None, ge=0)
     unit_price: Decimal | None = Field(default=None, ge=0)
+    standard_cost: Decimal | None = Field(default=None, ge=0)
     storage_condition: StorageCondition | None = None
     shelf_life_days: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
@@ -118,6 +120,7 @@ class ItemRead(BaseModel):
     stock_quantity: Decimal
     reorder_threshold: Decimal | None
     unit_price: Decimal
+    standard_cost: Decimal | None
     storage_condition: StorageCondition | None
     shelf_life_days: int | None
     is_active: bool

@@ -47,6 +47,12 @@ class CustomerService:
             customer_code=payload.customer_code,
             gstin=payload.gstin,
             notes=payload.notes,
+            customer_type=payload.customer_type,
+            state=payload.state,
+            district=payload.district,
+            city=payload.city,
+            pincode=payload.pincode,
+            competitive_risk_level=payload.competitive_risk_level,
             created_by_user_id=actor_id,
             updated_by_user_id=actor_id,
         )

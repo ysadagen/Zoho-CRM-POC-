@@ -86,6 +86,12 @@ class Item(Base):
             "shelf_life_days IS NULL OR shelf_life_days >= 0",
             name="ck_items_shelf_life_days_non_negative",
         ),
+        # Standard (cost) price cannot be negative; NULL means "not set"
+        # (the product-margin parameter then falls back to its default).
+        CheckConstraint(
+            "standard_cost IS NULL OR standard_cost >= 0",
+            name="ck_items_standard_cost_non_negative",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -125,6 +131,11 @@ class Item(Base):
     # Currency value; 2 decimal places is enough for INR-style pricing
     # (no fractional paise).
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    # Cost basis for the item. Enables the lead-scoring product-margin and
+    # the customer-health margin-quality parameters: margin% =
+    # (unit_price - standard_cost) / unit_price. Nullable — a missing cost
+    # makes those parameters fall back to their documented defaults.
+    standard_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     # Common-pharma attributes shared by RAW and FINISHED. Nullable so
     # pre-pharma rows (and create calls that omit them) stay valid; the
