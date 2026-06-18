@@ -18,6 +18,8 @@ export interface ListItemsParams {
   search?: string;
   /** Derived stock-health buckets to match; any-of (sent as repeated `status`). */
   statuses?: ItemStatus[];
+  /** Include soft-deleted (inactive) items in the result. Default: false. */
+  includeInactive?: boolean;
 }
 
 /** POST /items returns a minimal envelope; GET /items/{id} has the full record. */
@@ -37,6 +39,7 @@ function listQuery(params: ListItemsParams): Record<string, string | number | st
   const search = params.search?.trim();
   if (search) query.search = search;
   if (params.statuses && params.statuses.length > 0) query.status = params.statuses;
+  if (params.includeInactive) query.include_inactive = 'true';
   return query;
 }
 

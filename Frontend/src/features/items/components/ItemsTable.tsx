@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { routes } from '@/app/routes';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -79,7 +80,10 @@ export function ItemsTable({ items, loading, onEdit, onAddItem }: ItemsTableProp
                   {item.reorder_threshold ? formatQuantity(item.reorder_threshold) : '—'}
                 </td>
                 <td>
-                  <ItemStatusBadge status={item.status} />
+                  <span className="flex items-center gap-8">
+                    <ItemStatusBadge status={item.status} />
+                    {!item.is_active && <Badge variant="ink">Inactive</Badge>}
+                  </span>
                 </td>
                 <td className="right">
                   <Link className="btn btn-txt btn-sm" to={`${routes.items}/${item.id}`}>

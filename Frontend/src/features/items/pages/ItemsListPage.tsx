@@ -30,6 +30,7 @@ export function ItemsListPage(): JSX.Element {
     const s = searchParams.get('status');
     return s === 'ok' || s === 'low' || s === 'out' || s === 'attention' ? s : 'all';
   });
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
 
@@ -48,7 +49,7 @@ export function ItemsListPage(): JSX.Element {
   // A changed server-side filter invalidates the current page position.
   useEffect(() => {
     setOffset(0);
-  }, [search, type, status, limit]);
+  }, [search, type, status, includeInactive, limit]);
 
   const query = useItemsList({
     limit,
@@ -58,6 +59,7 @@ export function ItemsListPage(): JSX.Element {
     // Status is a real server filter, so the result + pager total are correct
     // across the whole catalog (not just the loaded page).
     statuses: status === 'all' ? undefined : STATUS_FILTER_TO_STATUSES[status],
+    includeInactive,
   });
 
   const rows = query.data?.items ?? [];
@@ -85,6 +87,8 @@ export function ItemsListPage(): JSX.Element {
             onType={setType}
             status={status}
             onStatus={setStatus}
+            includeInactive={includeInactive}
+            onIncludeInactive={setIncludeInactive}
           />
           <ItemsTable
             items={rows}

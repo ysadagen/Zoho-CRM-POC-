@@ -26,6 +26,8 @@ export interface ItemsToolbarProps {
   onType: (value: TypeFilter) => void;
   status: StatusFilter;
   onStatus: (value: StatusFilter) => void;
+  includeInactive: boolean;
+  onIncludeInactive: (value: boolean) => void;
 }
 
 export function ItemsToolbar({
@@ -35,6 +37,8 @@ export function ItemsToolbar({
   onType,
   status,
   onStatus,
+  includeInactive,
+  onIncludeInactive,
 }: ItemsToolbarProps): JSX.Element {
   return (
     <div className="toolbar">
@@ -56,6 +60,14 @@ export function ItemsToolbar({
         ariaLabel="Filter by stock status"
       />
       <span className="spacer" />
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={includeInactive}
+          onChange={(e) => onIncludeInactive(e.target.checked)}
+        />
+        Include inactive
+      </label>
     </div>
   );
 }
