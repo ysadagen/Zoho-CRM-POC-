@@ -19,8 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.scoring_config import ScoringConfig, ScoringEngine
 from app.services.scoring.default_configs import DEFAULT_PARAMS_V1
 
-pytestmark = pytest.mark.asyncio
-
 _LEAD = "LEAD_SCORING"
 
 

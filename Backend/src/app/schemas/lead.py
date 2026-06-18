@@ -16,6 +16,8 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.lead import DealerPotential, LeadSource, LeadStage
+from app.models.score_snapshot import LeadClassification
+from app.schemas.intelligence import LeadScoreOut
 
 __all__ = [
     "DealerPotential",
@@ -23,12 +25,21 @@ __all__ = [
     "LeadDetailRead",
     "LeadList",
     "LeadRead",
+    "LeadScoreSummary",
     "LeadSource",
     "LeadStage",
     "LeadStageHistoryRead",
     "LeadUpdate",
     "StageTransitionRequest",
 ]
+
+
+class LeadScoreSummary(BaseModel):
+    """Compact latest-score badge carried on every lead read (§9.6)."""
+
+    total_score: float
+    classification: LeadClassification
+    computed_at: datetime
 
 
 class LeadCreate(BaseModel):
@@ -149,6 +160,7 @@ class LeadRead(BaseModel):
     updated_by_user_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    latest_score: LeadScoreSummary | None = None
 
 
 class LeadStageHistoryRead(BaseModel):
@@ -165,9 +177,11 @@ class LeadStageHistoryRead(BaseModel):
 
 
 class LeadDetailRead(LeadRead):
-    """Lead detail — the full record plus its stage history (newest first)."""
+    """Lead detail — the full record, its stage history (newest first), and
+    the latest score's full component breakdown."""
 
     stage_history: list[LeadStageHistoryRead]
+    score: LeadScoreOut | None = None
 
 
 class LeadList(BaseModel):

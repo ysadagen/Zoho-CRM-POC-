@@ -8,26 +8,84 @@ This module grows over Phase 2B; 2B.0 wires the scoring-config admin surface
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies.auth import require_admin
+from app.dependencies.auth import get_current_user, require_admin
+from app.models.score_snapshot import LeadClassification
 from app.models.scoring_config import ScoringEngine
 from app.models.user import User
 from app.schemas.intelligence import (
+    LeadScoreDetailOut,
+    LeadScoreList,
+    LeadScoreListItem,
+    LeadScoreOut,
     ScoringConfigCreate,
     ScoringConfigList,
     ScoringConfigOut,
 )
 from app.services.scoring.config_service import ScoringConfigService
+from app.services.scoring.lead_scoring import LeadScoringService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
 _Session = Annotated[AsyncSession, Depends(get_db)]
+_CurrentUser = Annotated[User, Depends(get_current_user)]
 _AdminUser = Annotated[User, Depends(require_admin)]
+
+
+@router.get(
+    "/lead-scores",
+    response_model=LeadScoreList,
+    summary="Latest score per active lead",
+)
+async def list_lead_scores(
+    session: _Session,
+    current_user: _CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    classification: Annotated[LeadClassification | None, Query()] = None,
+    assigned_to_user_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> LeadScoreList:
+    """Latest score per active lead, highest score first. Filter by
+    ``classification`` (HOT/MEDIUM/COLD) and owning rep."""
+    rows, total = await LeadScoringService(session).list_latest(
+        limit=limit,
+        offset=offset,
+        classification=classification,
+        assigned_to_user_id=assigned_to_user_id,
+    )
+    return LeadScoreList(
+        items=[LeadScoreListItem.from_score_and_lead(score, lead) for score, lead in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/lead-scores/{lead_id}",
+    response_model=LeadScoreDetailOut,
+    summary="Latest score + history for one lead",
+)
+async def get_lead_score(
+    lead_id: uuid.UUID,
+    session: _Session,
+    current_user: _CurrentUser,
+) -> LeadScoreDetailOut:
+    """Latest score, its full component breakdown + ``defaults_applied``, and
+    the full snapshot history (newest first). 404 if the lead was never
+    scored."""
+    latest, history = await LeadScoringService(session).get_detail(lead_id)
+    base = LeadScoreOut.from_score(latest)
+    return LeadScoreDetailOut(
+        **base.model_dump(),
+        history=[LeadScoreOut.from_score(h) for h in history],
+    )
 
 
 @router.get(

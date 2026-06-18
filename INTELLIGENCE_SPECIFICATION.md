@@ -1222,7 +1222,7 @@ the slice's Definition of Done (CLAUDE.md §13) is fully met.
 | 2A.6 Seed script | ✅ Done | 2026-06-16 | `scripts/seed_demo.py` — deterministic (seed 42 + seeded UUIDs), guarded (refuses 2nd run w/o `--force`), acceptance-asserting; seeds 9 users / 25 items / 60 customers / 120 targets / 200 leads / 480 history / 1224 activities / 87 invoices / 65 payments. (SHIPPED-SO/dispatch enrichment deferred to 2B where the health engine consumes it.) |
 | **Gate 2A — user testing** | 🟢 Ready | 2026-06-16 | All 2A slices green; dev DB migrated + seeded. Awaiting user testing via `/docs` before Phase 2B. |
 | 2B.0 Config infrastructure | ✅ Done | 2026-06-18 | migration `a7c3e5f1b9d2`; `scoring_configs` (engine,version) + partial unique one-active-per-engine index; seeds v1 active ×4 from frozen `default_configs.py` (§17); `config_service` validation (weight-sum, unknown-key, band monotonicity → 422); admin `GET/POST /intelligence/configs` with version auto-increment + activation swap; 10 tests; ruff+mypy clean |
-| 2B.1 Lead scoring engine | ⬜ Not started | | |
+| 2B.1 Lead scoring engine | ✅ Done | 2026-06-18 | migration `b1d3f5a7c9e2`; pure `compute_lead_score` (§4) + `lead_scores` snapshot + `score_snapshot_repo`; write-triggers in `lead_service` (create / scoring-input PATCH / transition); `GET /intelligence/lead-scores[/{id}]`; leads now carry `latest_score` (+ full breakdown on detail). 55 tests (LS-1 + every band edge + every default + classification edges + write-trigger integration); ruff+mypy clean |
 | 2B.2 Customer health engine | ⬜ Not started | | |
 | 2B.3 Effort & efficiency engine | ⬜ Not started | | |
 | 2B.4 Beat planning engine | ⬜ Not started | | |
