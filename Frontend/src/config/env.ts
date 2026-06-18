@@ -20,6 +20,13 @@ function readAppEnv(): AppEnv {
 
 export const env = {
   apiBaseUrl: readString('VITE_API_BASE_URL', 'http://localhost:8000').replace(/\/+$/, ''),
+  // The Intelligence service (AI scoring) is a separate origin that shares the
+  // DB. The single axios client reaches it via a per-request `baseURL`
+  // override, so the request-ID / 401 / error contracts still apply.
+  intelligenceBaseUrl: readString(
+    'VITE_INTELLIGENCE_BASE_URL',
+    'http://localhost:8002',
+  ).replace(/\/+$/, ''),
   appEnv: readAppEnv(),
   mode: import.meta.env.MODE as 'development' | 'production' | 'test',
   isDev: import.meta.env.MODE === 'development',

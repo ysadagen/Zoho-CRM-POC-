@@ -1097,6 +1097,42 @@ pass (+3).
 
 ---
 
+## Phase 2C.1 — Intelligence foundations ✅ SHIPPED
+
+**Goal:** the wiring every intelligence surface (2C.2–2C.7) builds on, with no
+dead UI yet.
+
+**Shipped:**
+- **Connectivity** — the AI scores live in the separate **Intelligence service**
+  (port 8002), not the Backend. Added `VITE_INTELLIGENCE_BASE_URL`
+  (`.env.example`) + `env.intelligenceBaseUrl`. Per the agreed approach we keep
+  the **single axios client**: intelligence calls pass a per-request `baseURL`
+  override, so the request-ID / 401 / error-envelope contracts still apply
+  (Intelligence returns the same `{error:{code,message,request_id}}` shape).
+  No second HTTP client.
+- **Enums** (`types/enums.ts`) mirroring the Intelligence service:
+  `LeadClassification`, `HealthClassification`, `VisitPriority`.
+- **`ClassificationBadge`** (`components/ui/`) — maps a classification to the
+  shared `Badge` (colour **and** text, a11y §10); a `scale` discriminator
+  disambiguates overlapping values (lead MEDIUM = amber vs priority MEDIUM =
+  blue). 6 tests.
+
+**Verification:** `npm run verify` clean (lint + build); **341 tests pass**;
+coverage thresholds hold.
+
+**Files:** `.env.example`, `src/config/env.ts`, `src/types/enums.ts`,
+`src/components/ui/ClassificationBadge.{tsx,test.tsx}`.
+
+**How to test (you):**
+```powershell
+npm run test -- ClassificationBadge      # the new badge mapping
+npm run verify                           # lint + build + full suite
+```
+> The Intelligence service must be running on **8002** for the 2C.2+ pages to
+> load scores: `cd ..\Intelligence; uv run uvicorn app.main:app --app-dir src --port 8002`.
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.

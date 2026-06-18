@@ -119,3 +119,36 @@ export const BatchStatus = {
   RECALLED: 'RECALLED',
 } as const;
 export type BatchStatus = (typeof BatchStatus)[keyof typeof BatchStatus];
+
+/* ============================================================
+ *  Intelligence-service enums (Phase 2C)
+ *  Mirror the Intelligence service's classification enums. These come
+ *  from the Intelligence API (port 8002), not the Backend.
+ * ============================================================ */
+
+/** Lead-score band (`lead_scores.classification`). */
+export const LeadClassification = {
+  HOT: 'HOT',
+  MEDIUM: 'MEDIUM',
+  COLD: 'COLD',
+} as const;
+export type LeadClassification = (typeof LeadClassification)[keyof typeof LeadClassification];
+
+/** Customer-health band (`customer_health_scores.classification`). */
+export const HealthClassification = {
+  HEALTHY: 'HEALTHY',
+  STABLE: 'STABLE',
+  AT_RISK: 'AT_RISK',
+  CRITICAL: 'CRITICAL',
+} as const;
+export type HealthClassification =
+  (typeof HealthClassification)[keyof typeof HealthClassification];
+
+/** Beat-planning visit-priority band (`visit_priority_scores.priority`). */
+export const VisitPriority = {
+  CRITICAL: 'CRITICAL',
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW',
+} as const;
+export type VisitPriority = (typeof VisitPriority)[keyof typeof VisitPriority];
