@@ -228,26 +228,50 @@ class LeadScoringService:
             defaults_applied=result.defaults_applied,
         )
 
-    async def score_lead(self, lead: Lead, *, today: date | None = None) -> LeadScore:
-        """Compute and persist an append-only score snapshot for ``lead``."""
-        as_of = today or date.today()
-        config_id, params = await self._configs.load_active_params(ScoringEngine.LEAD_SCORING)
-        inputs = await self._gather_inputs(lead, params, as_of)
-        result = compute_lead_score(inputs, params)
+    async def list_live(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        classification: LeadClassification | None = None,
+        assigned_to_user_id: uuid.UUID | None = None,
+        today: date | None = None,
+    ) -> tuple[list[tuple[Lead, LeadScoreResult]], int, int]:
+        """Live-score every active lead, filter, and page (§9.4).
 
-        score = await self._snapshots.add_lead_score(self._to_snapshot(lead.id, config_id, result))
-        await self._session.commit()
-        await self._session.refresh(score)
-        logger.info(
-            "lead_scored",
-            extra={
-                "lead_id": str(lead.id),
-                "total_score": str(result.total_score),
-                "classification": result.classification,
-                "defaults_applied": result.defaults_applied,
-            },
+        Returns ``(page_rows, total_after_filter, config_version)`` — highest
+        score first. Lead scores are computed on read (the cohort quantity
+        ratio depends on the whole active set), not persisted on write.
+        """
+        as_of = today or date.today()
+        config = await self._configs.load_active(ScoringEngine.LEAD_SCORING)
+        params = config.params
+        rows: list[tuple[Lead, LeadScoreResult]] = []
+        for lead in await self._leads.list_all_active():
+            if assigned_to_user_id is not None and lead.assigned_to_user_id != assigned_to_user_id:
+                continue
+            result = compute_lead_score(await self._gather_inputs(lead, params, as_of), params)
+            if classification is not None and result.classification != classification.value:
+                continue
+            rows.append((lead, result))
+        rows.sort(key=lambda lr: lr[1].total_score, reverse=True)
+        return rows[offset : offset + limit], len(rows), config.version
+
+    async def get_live(
+        self, lead_id: uuid.UUID, *, today: date | None = None
+    ) -> tuple[Lead, LeadScoreResult, int, list[LeadScore]]:
+        """Live score + snapshot history for one lead. 404 if the lead is
+        unknown/inactive."""
+        as_of = today or date.today()
+        lead = await self._leads.get_by_id(lead_id)
+        if lead is None:
+            raise NotFoundError("Lead not found", code="LEAD_NOT_FOUND")
+        config = await self._configs.load_active(ScoringEngine.LEAD_SCORING)
+        result = compute_lead_score(
+            await self._gather_inputs(lead, config.params, as_of), config.params
         )
-        return score
+        history = await self._snapshots.lead_score_history(lead_id)
+        return lead, result, config.version, history
 
     async def recompute_all(self, *, today: date | None = None) -> int:
         """Re-score every active lead in one transaction (recompute sweep).
@@ -265,29 +289,6 @@ class LeadScoringService:
         await self._session.commit()
         logger.info("lead_scores_recomputed", extra={"count": len(leads)})
         return len(leads)
-
-    async def list_latest(
-        self,
-        *,
-        limit: int,
-        offset: int,
-        classification: LeadClassification | None = None,
-        assigned_to_user_id: uuid.UUID | None = None,
-    ) -> tuple[list[tuple[LeadScore, Lead]], int]:
-        """Latest score per active lead, joined to the lead (§9.4)."""
-        return await self._snapshots.list_latest_lead_scores(
-            limit=limit,
-            offset=offset,
-            classification=classification,
-            assigned_to_user_id=assigned_to_user_id,
-        )
-
-    async def get_detail(self, lead_id: uuid.UUID) -> tuple[LeadScore, list[LeadScore]]:
-        """Latest score + full history for one lead. 404 if never scored."""
-        history = await self._snapshots.lead_score_history(lead_id)
-        if not history:
-            raise NotFoundError("No score for this lead", code="LEAD_SCORE_NOT_FOUND")
-        return history[0], history
 
     async def _gather_inputs(
         self, lead: Lead, params: dict[str, Any], today: date
@@ -323,19 +324,3 @@ class LeadScoringService:
             unit_price=unit_price,
             standard_cost=standard_cost,
         )
-
-
-#: Lead fields that, when changed via PATCH, require a score recompute (§4.7).
-LEAD_SCORING_INPUT_FIELDS: frozenset[str] = frozenset(
-    {
-        "required_by_date",
-        "state",
-        "district",
-        "city",
-        "pincode",
-        "estimated_budget",
-        "dealer_potential",
-        "quantity",
-        "item_id",
-    }
-)

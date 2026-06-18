@@ -30,14 +30,11 @@ from app.models.lead import (
     LeadStage,
     LeadStageHistory,
 )
-from app.models.score_snapshot import LeadScore
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.item_repo import ItemRepository
 from app.repositories.lead_repo import LeadRepository
-from app.repositories.score_snapshot_repo import ScoreSnapshotRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.lead import LeadCreate, LeadUpdate, StageTransitionRequest
-from app.services.scoring.lead_scoring import LEAD_SCORING_INPUT_FIELDS, LeadScoringService
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +48,6 @@ class LeadService:
         self._customers = CustomerRepository(session)
         self._items = ItemRepository(session)
         self._users = UserRepository(session)
-        self._scorer = LeadScoringService(session)
-        self._snapshots = ScoreSnapshotRepository(session)
 
     async def create(self, payload: LeadCreate, *, actor_id: uuid.UUID) -> Lead:
         """Create a lead at stage NEW and write its creation-history row.
@@ -119,8 +114,6 @@ class LeadService:
                 "assigned_to_user_id": str(lead.assigned_to_user_id),
             },
         )
-        # Compute the initial score snapshot (§4.7 — on create).
-        await self._scorer.score_lead(lead)
         return lead
 
     async def get(self, lead_id: uuid.UUID) -> Lead:
@@ -129,7 +122,9 @@ class LeadService:
             raise NotFoundError("Lead not found", code="LEAD_NOT_FOUND")
         return lead
 
-    async def get_with_history(self, lead_id: uuid.UUID) -> tuple[Lead, list[LeadStageHistory]]:
+    async def get_with_history(
+        self, lead_id: uuid.UUID
+    ) -> tuple[Lead, list[LeadStageHistory]]:
         """Return a lead plus its stage history (newest first) for the
         detail view."""
         lead = await self.get(lead_id)
@@ -191,9 +186,6 @@ class LeadService:
             "lead_updated",
             extra={"lead_id": str(lead.id), "fields": sorted(updates.keys())},
         )
-        # Recompute the score only when a scoring input actually changed (§4.7).
-        if set(updates) & LEAD_SCORING_INPUT_FIELDS:
-            await self._scorer.score_lead(lead)
         return lead
 
     async def transition(
@@ -250,17 +242,7 @@ class LeadService:
                 "actor_id": str(actor_id),
             },
         )
-        # Recompute the score after a stage change (§4.7).
-        await self._scorer.score_lead(lead)
         return lead
-
-    async def latest_score(self, lead_id: uuid.UUID) -> LeadScore | None:
-        """Latest score snapshot for a lead (None if never scored)."""
-        return await self._snapshots.latest_lead_score(lead_id)
-
-    async def latest_scores_map(self, lead_ids: list[uuid.UUID]) -> dict[uuid.UUID, LeadScore]:
-        """Latest score per lead for a page of leads (no N+1)."""
-        return await self._snapshots.latest_lead_scores_map(lead_ids)
 
     async def soft_delete(self, lead_id: uuid.UUID, *, actor_id: uuid.UUID) -> None:
         """Deactivate a lead (``is_active = false``). Idempotent."""
@@ -284,22 +266,16 @@ class LeadService:
         present references are checked.
         """
         await self._require_exists(
-            assigned_to_user_id,
-            self._users.get_by_id,
-            message="Assigned user not found",
-            code="USER_NOT_FOUND",
+            assigned_to_user_id, self._users.get_by_id,
+            message="Assigned user not found", code="USER_NOT_FOUND",
         )
         await self._require_exists(
-            customer_id,
-            self._customers.get_by_id,
-            message="Customer not found",
-            code="CUSTOMER_NOT_FOUND",
+            customer_id, self._customers.get_by_id,
+            message="Customer not found", code="CUSTOMER_NOT_FOUND",
         )
         await self._require_exists(
-            item_id,
-            self._items.get_by_id,
-            message="Item not found",
-            code="ITEM_NOT_FOUND",
+            item_id, self._items.get_by_id,
+            message="Item not found", code="ITEM_NOT_FOUND",
         )
 
     @staticmethod

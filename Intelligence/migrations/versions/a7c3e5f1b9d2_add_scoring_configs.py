@@ -33,7 +33,7 @@ from app.services.scoring.default_configs import DEFAULT_PARAMS_V1
 
 # revision identifiers, used by Alembic.
 revision: str = "a7c3e5f1b9d2"
-down_revision: str | None = "f4b6c8e0a3d5"
+down_revision: str | None = None  # base of the Intelligence migration chain
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -46,11 +46,6 @@ class UserRepository:
         page = list((await self._session.execute(page_stmt)).scalars().all())
         return page, int(total)
 
-    async def list_active(self) -> list[User]:
-        """Every active user (unpaginated) — the rep cohort for effort scoring."""
-        stmt = select(User).where(User.is_active.is_(True)).order_by(User.email)
-        return list((await self._session.execute(stmt)).scalars().all())
-
     async def create(
         self,
         *,

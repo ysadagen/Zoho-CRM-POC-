@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     )
     from app.services.scoring.customer_health import CustomerHealthResult
     from app.services.scoring.effort_efficiency import RepEffortResult
+    from app.services.scoring.lead_scoring import LeadScoreResult
 
 __all__ = [
     "BeatClusterOut",
@@ -103,7 +104,33 @@ class LeadScoreOut(BaseModel):
     defaults_applied: list[str]
 
     @classmethod
+    def from_result(
+        cls,
+        lead_id: uuid.UUID,
+        config_version: int,
+        computed_at: datetime,
+        result: LeadScoreResult,
+    ) -> LeadScoreOut:
+        """Build from a live (un-persisted) computation."""
+        return cls(
+            lead_id=lead_id,
+            config_version=config_version,
+            computed_at=computed_at,
+            components=LeadScoreComponents(
+                urgency=result.urgency,
+                location=result.location,
+                contribution_margin=result.contribution_margin,
+                quantity=result.quantity,
+                product_margin=result.product_margin,
+            ),
+            total_score=result.total_score,
+            classification=LeadClassification(result.classification),
+            defaults_applied=list(result.defaults_applied),
+        )
+
+    @classmethod
     def from_score(cls, score: LeadScore) -> LeadScoreOut:
+        """Build from a persisted snapshot row (used for history)."""
         return cls(
             lead_id=score.lead_id,
             config_version=score.config.version,
@@ -129,8 +156,10 @@ class LeadScoreListItem(LeadScoreOut):
     assigned_to_user_id: uuid.UUID
 
     @classmethod
-    def from_score_and_lead(cls, score: LeadScore, lead: Lead) -> LeadScoreListItem:
-        base = LeadScoreOut.from_score(score)
+    def from_result_and_lead(
+        cls, lead: Lead, config_version: int, computed_at: datetime, result: LeadScoreResult
+    ) -> LeadScoreListItem:
+        base = LeadScoreOut.from_result(lead.id, config_version, computed_at, result)
         return cls(
             **base.model_dump(),
             lead_number=lead.lead_number,

@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from decimal import Decimal
 
 from sqlalchemy import Select, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.item import Item, ItemType
 from app.models.lead import Lead, LeadSource, LeadStage, LeadStageHistory
 
 
@@ -90,27 +88,6 @@ class LeadRepository:
         self._session.add(history)
         await self._session.flush()
         return history
-
-    async def list_all_active(self) -> list[Lead]:
-        """Every active lead (unpaginated) — for the recompute sweep."""
-        stmt = select(Lead).where(Lead.is_active.is_(True)).order_by(Lead.created_at)
-        return list((await self._session.execute(stmt)).scalars().all())
-
-    async def cohort_max_quantity(
-        self, *, created_since: date, item_type: ItemType | None
-    ) -> Decimal | None:
-        """Max ``quantity`` over cohort leads (created on/after ``created_since``,
-        non-null quantity) — restricted to leads whose linked item has
-        ``item_type`` when given (§4.4). Returns None for an empty cohort.
-        """
-        stmt = select(func.max(Lead.quantity)).where(
-            Lead.quantity.is_not(None),
-            Lead.created_at >= created_since,
-        )
-        if item_type is not None:
-            stmt = stmt.join(Item, Item.id == Lead.item_id).where(Item.type == item_type)
-        result = (await self._session.execute(stmt)).scalar_one_or_none()
-        return Decimal(result) if result is not None else None
 
     async def next_lead_number(self) -> str:
         """Generate the next ``LD-YYYYMM-NNNNNN`` identifier.

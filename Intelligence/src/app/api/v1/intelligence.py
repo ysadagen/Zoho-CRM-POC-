@@ -57,7 +57,7 @@ _AdminUser = Annotated[User, Depends(require_admin)]
 @router.get(
     "/lead-scores",
     response_model=LeadScoreList,
-    summary="Latest score per active lead",
+    summary="Live score per active lead",
 )
 async def list_lead_scores(
     session: _Session,
@@ -67,16 +67,20 @@ async def list_lead_scores(
     classification: Annotated[LeadClassification | None, Query()] = None,
     assigned_to_user_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> LeadScoreList:
-    """Latest score per active lead, highest score first. Filter by
-    ``classification`` (HOT/MEDIUM/COLD) and owning rep."""
-    rows, total = await LeadScoringService(session).list_latest(
+    """Live-scored leads, highest score first. Filter by ``classification``
+    (HOT/MEDIUM/COLD) and owning rep."""
+    computed_at = datetime.now(UTC)
+    rows, total, version = await LeadScoringService(session).list_live(
         limit=limit,
         offset=offset,
         classification=classification,
         assigned_to_user_id=assigned_to_user_id,
     )
     return LeadScoreList(
-        items=[LeadScoreListItem.from_score_and_lead(score, lead) for score, lead in rows],
+        items=[
+            LeadScoreListItem.from_result_and_lead(lead, version, computed_at, result)
+            for lead, result in rows
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -86,18 +90,18 @@ async def list_lead_scores(
 @router.get(
     "/lead-scores/{lead_id}",
     response_model=LeadScoreDetailOut,
-    summary="Latest score + history for one lead",
+    summary="Live score + snapshot history for one lead",
 )
 async def get_lead_score(
     lead_id: uuid.UUID,
     session: _Session,
     current_user: _CurrentUser,
 ) -> LeadScoreDetailOut:
-    """Latest score, its full component breakdown + ``defaults_applied``, and
-    the full snapshot history (newest first). 404 if the lead was never
-    scored."""
-    latest, history = await LeadScoringService(session).get_detail(lead_id)
-    base = LeadScoreOut.from_score(latest)
+    """Live score with full component breakdown + ``defaults_applied``, plus
+    the snapshot history (newest first). 404 if the lead is unknown."""
+    computed_at = datetime.now(UTC)
+    lead, result, version, history = await LeadScoringService(session).get_live(lead_id)
+    base = LeadScoreOut.from_result(lead.id, version, computed_at, result)
     return LeadScoreDetailOut(
         **base.model_dump(),
         history=[LeadScoreOut.from_score(h) for h in history],
