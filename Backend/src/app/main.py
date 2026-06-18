@@ -26,6 +26,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.batches import router as batches_router
 from app.api.v1.customer_targets import router as customer_targets_router
 from app.api.v1.customers import router as customers_router
+from app.api.v1.intelligence import router as intelligence_router
 from app.api.v1.invoices import router as invoices_router
 from app.api.v1.items import router as items_router
 from app.api.v1.leads import router as leads_router
@@ -267,6 +268,7 @@ def create_app() -> FastAPI:
     app.include_router(leads_router, prefix="/api/v1")
     app.include_router(activities_router, prefix="/api/v1")
     app.include_router(invoices_router, prefix="/api/v1")
+    app.include_router(intelligence_router, prefix="/api/v1")
 
     logger.info("app_initialized", extra={"env": settings.app_env})
     return app

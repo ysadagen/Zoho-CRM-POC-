@@ -18,6 +18,7 @@ from app.models.item import Item
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.raw_item_detail import RawItemDetail
 from app.models.sales_order import SalesOrder, SalesOrderItem
+from app.models.scoring_config import ScoringConfig
 from app.models.stock_movement import StockMovement
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -34,6 +35,7 @@ __all__ = [
     "RawItemDetail",
     "SalesOrder",
     "SalesOrderItem",
+    "ScoringConfig",
     "StockMovement",
     "User",
     "Vendor",
