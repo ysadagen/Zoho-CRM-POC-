@@ -157,8 +157,8 @@ Frontend/
     │   ├── api/
     │   │   ├── client.ts           # the ONE axios instance + interceptors
     │   │   ├── errors.ts           # ApiError class + ErrorCode union
-    │   │   ├── request-id.ts       # generator (crypto.randomUUID)
-    │   │   └── types.ts            # Paginated<T>, ApiErrorEnvelope
+    │   │   └── request-id.ts       # generator (crypto.randomUUID)
+    │   │                           # (Paginated<T> / ApiErrorEnvelope live in src/types/api.types.ts)
     │   ├── logger.ts               # structured browser logger
     │   └── format.ts               # currency / date / qty formatters
     │

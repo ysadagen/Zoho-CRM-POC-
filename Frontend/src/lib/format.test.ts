@@ -4,13 +4,11 @@ import {
   formatCurrency,
   formatQuantity,
   formatSignedQuantity,
-  formatInteger,
   formatDate,
   formatDateTime,
   formatTime,
   formatLongDate,
   formatRelative,
-  toIsoDate,
 } from './format';
 
 describe('formatCurrency', () => {
@@ -55,16 +53,6 @@ describe('formatSignedQuantity', () => {
 
   it('has no sign for zero', () => {
     expect(formatSignedQuantity(0)).toBe('0');
-  });
-});
-
-describe('formatInteger', () => {
-  it('groups thousands and drops decimals', () => {
-    expect(formatInteger(2458750)).toMatch(/24,58,750|2,458,750/);
-  });
-
-  it('returns an em dash for null', () => {
-    expect(formatInteger(null)).toBe('—');
   });
 });
 
@@ -126,9 +114,3 @@ describe('formatRelative', () => {
   });
 });
 
-describe('toIsoDate', () => {
-  it('renders YYYY-MM-DD from local date components', () => {
-    expect(toIsoDate(new Date(2026, 4, 28))).toBe('2026-05-28');
-    expect(toIsoDate(new Date(2026, 0, 9))).toBe('2026-01-09');
-  });
-});

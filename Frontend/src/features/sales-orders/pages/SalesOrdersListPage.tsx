@@ -40,6 +40,8 @@ export function SalesOrdersListPage(): JSX.Element {
   const query = useSalesOrdersList({
     limit,
     offset,
+    // `status` only holds a fixed filter option; 'ALL' maps to no filter, so
+    // the cast narrows the remaining string to the query enum.
     status: status === 'ALL' ? undefined : (status as SalesOrderStatus),
     customer_id: customerId || undefined,
   });

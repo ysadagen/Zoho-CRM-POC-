@@ -54,6 +54,8 @@ export function ItemsListPage(): JSX.Element {
   const query = useItemsList({
     limit,
     offset,
+    // `type` only holds a fixed filter option; 'ALL' maps to no filter, so the
+    // cast narrows the remaining string to the query enum.
     type: type === 'ALL' ? undefined : (type as ItemType),
     search,
     // Status is a real server filter, so the result + pager total are correct

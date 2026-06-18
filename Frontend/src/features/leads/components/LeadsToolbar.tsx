@@ -27,6 +27,8 @@ export function LeadsToolbar({
   classification,
   onClassification,
 }: LeadsToolbarProps): JSX.Element {
+  // Each <select> below only renders option values from its enum (plus the ''
+  // "all" sentinel), so casting e.target.value to that union is sound.
   return (
     <div className="toolbar">
       <label className="flex items-center gap-8">

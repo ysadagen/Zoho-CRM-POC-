@@ -28,6 +28,8 @@ export function getSession(): StoredSession | null {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
+    // Cast is provisional: the field checks immediately below validate the
+    // runtime shape before we ever return or trust `parsed`.
     const parsed = JSON.parse(raw) as StoredSession;
     if (!parsed?.token || typeof parsed.expiresAt !== 'number' || !parsed.user) {
       clearSession();

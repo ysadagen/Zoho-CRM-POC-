@@ -6,9 +6,11 @@ import { PageError } from '@/components/errors/PageError';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Button, ButtonLink } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Card, CardHeader } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Tabs } from '@/components/ui/Tabs';
+import { ActivityTimeline } from '@/features/activities/components/ActivityTimeline';
+import { LogActivityModal } from '@/features/activities/components/LogActivityModal';
 import { formatDate } from '@/lib/format';
 import type { Customer } from '@/types/api.types';
 
@@ -16,11 +18,12 @@ import { CustomerFormDrawer } from '../components/CustomerFormDrawer';
 import { CustomerSalesOrdersTab } from '../components/CustomerSalesOrdersTab';
 import { useCustomer, useCustomerSalesOrders } from '../hooks/useCustomers';
 
-type DetailTab = 'profile' | 'orders';
+type DetailTab = 'profile' | 'orders' | 'activity';
 
 const TABS = [
   { value: 'profile', label: 'Profile' },
   { value: 'orders', label: 'Sales orders' },
+  { value: 'activity', label: 'Activity' },
 ] as const;
 
 function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }): JSX.Element {
@@ -71,6 +74,7 @@ export function CustomerDetailPage(): JSX.Element {
   const ordersQuery = useCustomerSalesOrders(id);
   const [tab, setTab] = useState<DetailTab>('profile');
   const [editOpen, setEditOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
 
   if (customerQuery.isPending) return <DetailSkeleton />;
   if (customerQuery.isError || !customerQuery.data) {
@@ -103,18 +107,31 @@ export function CustomerDetailPage(): JSX.Element {
 
       <Tabs tabs={[...TABS]} value={tab} onChange={setTab} ariaLabel="Customer detail sections" />
 
-      {tab === 'profile' ? (
-        <Profile customer={customer} />
-      ) : (
+      {tab === 'profile' && <Profile customer={customer} />}
+      {tab === 'orders' && (
         <CustomerSalesOrdersTab
           orders={ordersQuery.data?.items ?? []}
           loading={ordersQuery.isPending}
         />
       )}
+      {tab === 'activity' && (
+        <Card pad>
+          <CardHeader
+            title="Activity"
+            action={
+              <Button variant="sec" icon="plus" onClick={() => setLogOpen(true)}>
+                Log activity
+              </Button>
+            }
+          />
+          <ActivityTimeline customerId={id} />
+        </Card>
+      )}
 
       {editOpen && (
         <CustomerFormDrawer mode="edit" customer={customer} onClose={() => setEditOpen(false)} />
       )}
+      {logOpen && <LogActivityModal customerId={id} onClose={() => setLogOpen(false)} />}
     </>
   );
 }

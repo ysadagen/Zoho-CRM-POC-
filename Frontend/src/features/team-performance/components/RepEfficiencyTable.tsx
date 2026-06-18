@@ -80,9 +80,9 @@ export function RepEfficiencyTable({
               return (
                 <tr
                   key={rep.rep_user_id}
+                  className="row-click"
                   aria-selected={rep.rep_user_id === selectedId}
                   onClick={() => onSelect(rep)}
-                  style={{ cursor: 'pointer' }}
                 >
                   <td>
                     <button

@@ -40,6 +40,8 @@ export function PurchaseOrdersListPage(): JSX.Element {
   const query = usePurchaseOrdersList({
     limit,
     offset,
+    // `status` only holds a fixed filter option; 'ALL' maps to no filter, so
+    // the cast narrows the remaining string to the query enum.
     status: status === 'ALL' ? undefined : (status as PurchaseOrderStatus),
     vendor_id: vendorId || undefined,
   });

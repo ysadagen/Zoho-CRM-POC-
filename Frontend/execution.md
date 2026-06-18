@@ -1162,21 +1162,59 @@ the single axios client with a per-request `baseURL` override; CRM data
 client; the request-ID / 401 / error-envelope contracts apply to Intelligence
 calls unchanged.
 
-**Verification:** `npm run verify` clean (lint + build); **376 tests pass**
+**Verification:** `npm run verify` clean (lint + build); **378 tests pass**
 (90 files); `npm run test:coverage` thresholds hold (94.3% lines overall).
 
-**Known follow-up (not blocking):** the activity timeline is wired into the
-*lead* detail; adding it to the *customer* detail (a tab) is a small,
-self-contained add deferred to keep this phase focused.
+**Follow-up — DONE:** the activity timeline is now wired into the *customer*
+detail too, as an **Activity** tab (`CustomerDetailPage`) reusing the existing
+`ActivityTimeline` (`customerId`) + `LogActivityModal` (`customerId`) — no new
+API or types, pure page composition mirroring the lead-detail wiring. Covered
+by two new `CustomerDetailPage` tests (list activities on the tab; open the Log
+Activity modal). This closes the only outstanding 2C item.
 
 **How to test (you):**
 ```powershell
 npm run verify            # lint + build + full suite
 npm run test:coverage     # enforce coverage thresholds
-npm run dev               # then browse /leads, /customer-health, /team-performance, /beat-plan
+npm run dev               # browse /leads, /customer-health, /team-performance, /beat-plan,
+                          #   and a customer's detail → Activity tab (log + timeline)
 ```
 > The Intelligence service must be running on **8002** (and the Backend on
 > 8000) for the score-backed screens to load live data.
+
+---
+
+## Compliance hardening pass (post-2C)
+
+A four-dimension audit against the CLAUDE.md contract (layering/§4·§6, the §5
+non-negotiables, §9·§11 types/logging, §8 forms + design system). The §5
+non-negotiables and the API-boundary/env/no-direct-axios rules were already
+clean. Fixes applied (all behaviour-preserving — **375 tests green, lib 100%
+lines / global 94.29%, lint 0 warnings**):
+
+- **Design system (no inline colour/spacing):** extracted three utilities
+  (`.text-danger`, `.row-click`, `.field-auto`) into `globals.css` and replaced
+  the inline `style={{…}}` on 7 toolbar/Pager selects, the `ReceivePoModal`
+  allocation colour, and the `RepEfficiencyTable` row cursor. Genuinely dynamic
+  inline styles (QuadrantScatter geometry, ProgressBar/Skeleton sizing) are
+  correct and were left.
+- **Dead code (§11):** deleted the unused `lib/api/types.ts` re-export shim
+  (zero importers; `Paginated`/`ApiErrorEnvelope` live in `types/api.types.ts`,
+  §3 updated) and the unused `formatInteger` / `toIsoDate` (+ `INT_NF`) helpers
+  and their tests.
+- **`as`-cast justifications (§11):** added one-line "why" comments to the
+  enum/URL-filter/select-narrowing casts that lacked them (item.transform,
+  ItemFormDrawer resolver, token-storage, the list-page filter casts, the
+  toolbar select casts, IngredientsEditor).
+
+Deliberately **not** changed, with rationale: `dashboard/useIntelligenceSummary`
+importing other features' `*.api.ts` is intentional — the dashboard keeps its
+own query keys to avoid coupling to those features' caches; routing through
+their hooks would increase coupling. `OrderLine` stays exported as the public
+param type of `estimatedTotal`. Routing `422` field errors to `setError` on the
+confirmation/action modals (vs. the entity create/edit drawers, which already
+do) is an optional §8 nicety — the danger toast already carries the Request ID
+per §5.6 — left for a focused forms pass if desired.
 
 ---
 

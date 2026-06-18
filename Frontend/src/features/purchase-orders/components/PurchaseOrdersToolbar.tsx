@@ -28,8 +28,7 @@ export function PurchaseOrdersToolbar({
     <div className="toolbar">
       <Segmented options={STATUS_OPTIONS} value={status} onChange={onStatus} ariaLabel="Filter by status" />
       <select
-        className="select"
-        style={{ width: 'auto', minHeight: 'auto' }}
+        className="select field-auto"
         value={vendorId}
         onChange={(e) => onVendor(e.target.value)}
         aria-label="Filter by vendor"

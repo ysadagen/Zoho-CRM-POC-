@@ -813,6 +813,10 @@ table.tbl .strong { font-weight: 600; }
 .fs-13 { font-size: 13px; }
 .fs-14 { font-size: 14px; }
 .w-full { width: 100%; }
+.text-danger { color: var(--danger); }
+.row-click { cursor: pointer; }
+/* Shrink a form control to its content (toolbar filters, page-size select). */
+.field-auto { width: auto; min-height: auto; }
 
 /* ================ PROGRESS BAR ================ */
 .bar {
