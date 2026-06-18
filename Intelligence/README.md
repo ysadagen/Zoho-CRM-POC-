@@ -57,6 +57,10 @@ copy .env.example .env   # then edit
 uv sync
 
 # 3. Apply this service's migrations (creates the scoring tables in the shared DB)
+#    PREREQUISITE: the Backend must be migrated first — the scoring tables FK to
+#    its CRM tables (users, customers, leads, ...). On a fresh DB run, in order:
+#        cd ..\Backend ; uv run alembic upgrade head     # creates CRM tables
+#        cd ..\Intelligence
 uv run alembic upgrade head     # or: .\.venv\Scripts\python.exe -m alembic upgrade head
 
 # 4. Run (port 8002)
