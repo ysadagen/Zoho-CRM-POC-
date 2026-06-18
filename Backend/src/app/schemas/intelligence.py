@@ -9,25 +9,34 @@ as a validation error rather than silently dropping.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.score_snapshot import HealthClassification, LeadClassification
+from app.models.score_snapshot import (
+    EffortQuadrant,
+    HealthClassification,
+    LeadClassification,
+)
 from app.models.scoring_config import ScoringEngine
 
 if TYPE_CHECKING:
     from app.models.customer import Customer
     from app.models.lead import Lead
-    from app.models.score_snapshot import CustomerHealthScore, LeadScore
+    from app.models.score_snapshot import CustomerHealthScore, EffortEfficiencyScore, LeadScore
     from app.services.scoring.customer_health import CustomerHealthResult
+    from app.services.scoring.effort_efficiency import RepEffortResult
 
 __all__ = [
     "CustomerHealthDetailOut",
     "CustomerHealthList",
     "CustomerHealthOut",
     "CustomerHealthSnapshotOut",
+    "EffortEfficiencyDetailOut",
+    "EffortEfficiencyList",
+    "EffortEfficiencyOut",
+    "EffortEfficiencySnapshotOut",
     "LeadScoreComponents",
     "LeadScoreDetailOut",
     "LeadScoreList",
@@ -203,6 +212,100 @@ class CustomerHealthDetailOut(CustomerHealthOut):
         return cls(
             **base.model_dump(),
             history=[CustomerHealthSnapshotOut.model_validate(h) for h in history],
+        )
+
+
+class EffortEfficiencyComponents(BaseModel):
+    """The five efficiency sub-scores (each 0-100)."""
+
+    stage_change_rate: float
+    won_rate: float
+    revenue_efficiency: float
+    time_to_close: float
+    lead_score_utilization: float
+
+
+class EffortActivityCounts(BaseModel):
+    visits: int
+    meetings: int
+    follow_ups: int
+    calls: int
+    hours_logged: float
+
+
+class EffortEfficiencyOut(BaseModel):
+    """One rep's effort & efficiency for a period (§9.6)."""
+
+    rep_user_id: uuid.UUID
+    rep_email: str
+    period_start: date
+    period_end: date
+    activity_counts: EffortActivityCounts
+    effort_raw: float
+    effort_score: float
+    efficiency_components: EffortEfficiencyComponents
+    efficiency_score: float
+    efficiency_band: str
+    quadrant: EffortQuadrant
+
+    @classmethod
+    def from_result(
+        cls, result: RepEffortResult, period_start: date, period_end: date
+    ) -> EffortEfficiencyOut:
+        return cls(
+            rep_user_id=result.rep_user_id,
+            rep_email=result.rep_email,
+            period_start=period_start,
+            period_end=period_end,
+            activity_counts=EffortActivityCounts(**result.activity_counts),
+            effort_raw=result.effort_raw,
+            effort_score=result.effort_score,
+            efficiency_components=EffortEfficiencyComponents(**result.efficiency_components),
+            efficiency_score=result.efficiency_score,
+            efficiency_band=result.efficiency_band,
+            quadrant=EffortQuadrant(result.quadrant),
+        )
+
+
+class EffortEfficiencyList(BaseModel):
+    """Envelope for ``GET /intelligence/effort-efficiency`` (effort desc)."""
+
+    items: list[EffortEfficiencyOut]
+    total: int
+    period_start: date
+    period_end: date
+
+
+class EffortEfficiencySnapshotOut(BaseModel):
+    """One historical effort & efficiency snapshot."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    computed_at: datetime
+    period_start: date
+    period_end: date
+    effort_score: float
+    efficiency_score: float
+    quadrant: EffortQuadrant
+
+
+class EffortEfficiencyDetailOut(EffortEfficiencyOut):
+    """Live effort & efficiency plus the snapshot history (trend)."""
+
+    history: list[EffortEfficiencySnapshotOut]
+
+    @classmethod
+    def from_result_and_history(
+        cls,
+        result: RepEffortResult,
+        period_start: date,
+        period_end: date,
+        history: list[EffortEfficiencyScore],
+    ) -> EffortEfficiencyDetailOut:
+        base = EffortEfficiencyOut.from_result(result, period_start, period_end)
+        return cls(
+            **base.model_dump(),
+            history=[EffortEfficiencySnapshotOut.model_validate(h) for h in history],
         )
 
 

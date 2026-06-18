@@ -9,13 +9,14 @@ This module grows over Phase 2B; 2B.0 wires the scoring-config admin surface
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.exceptions import NotFoundError
 from app.dependencies.auth import get_current_user, require_admin
 from app.models.score_snapshot import HealthClassification, LeadClassification
 from app.models.scoring_config import ScoringEngine
@@ -24,6 +25,9 @@ from app.schemas.intelligence import (
     CustomerHealthDetailOut,
     CustomerHealthList,
     CustomerHealthOut,
+    EffortEfficiencyDetailOut,
+    EffortEfficiencyList,
+    EffortEfficiencyOut,
     LeadScoreDetailOut,
     LeadScoreList,
     LeadScoreListItem,
@@ -34,6 +38,7 @@ from app.schemas.intelligence import (
 )
 from app.services.scoring.config_service import ScoringConfigService
 from app.services.scoring.customer_health import CustomerHealthService
+from app.services.scoring.effort_efficiency import EffortEfficiencyService
 from app.services.scoring.lead_scoring import LeadScoringService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
@@ -134,6 +139,54 @@ async def get_customer_health(
     return CustomerHealthDetailOut.from_result_and_history(
         customer, result, datetime.now(UTC), history
     )
+
+
+@router.get(
+    "/effort-efficiency",
+    response_model=EffortEfficiencyList,
+    summary="Live effort & efficiency per rep for a period",
+)
+async def list_effort_efficiency(
+    session: _Session,
+    current_user: _CurrentUser,
+    period_start: Annotated[date | None, Query()] = None,
+    period_end: Annotated[date | None, Query()] = None,
+) -> EffortEfficiencyList:
+    """Live cohort table — per-rep effort, efficiency, components, and
+    quadrant. Defaults to the trailing 90 days; pass an explicit
+    ``period_start``/``period_end`` to override. Highest effort first."""
+    results, start, end = await EffortEfficiencyService(session).compute_cohort(
+        period_start=period_start, period_end=period_end
+    )
+    items = [EffortEfficiencyOut.from_result(r, start, end) for r in results]
+    items.sort(key=lambda i: i.effort_score, reverse=True)
+    return EffortEfficiencyList(items=items, total=len(items), period_start=start, period_end=end)
+
+
+@router.get(
+    "/effort-efficiency/{user_id}",
+    response_model=EffortEfficiencyDetailOut,
+    summary="Live effort & efficiency detail + trend for one rep",
+)
+async def get_effort_efficiency(
+    user_id: uuid.UUID,
+    session: _Session,
+    current_user: _CurrentUser,
+    period_start: Annotated[date | None, Query()] = None,
+    period_end: Annotated[date | None, Query()] = None,
+) -> EffortEfficiencyDetailOut:
+    """Live effort & efficiency for one rep (computed within the full cohort so
+    normalization is correct) plus the snapshot history. 404 if the user is
+    not an active rep."""
+    service = EffortEfficiencyService(session)
+    results, start, end = await service.compute_cohort(
+        period_start=period_start, period_end=period_end
+    )
+    match = next((r for r in results if r.rep_user_id == user_id), None)
+    if match is None:
+        raise NotFoundError("No effort score for this user", code="EFFORT_SCORE_NOT_FOUND")
+    history = await service.snapshot_history(user_id)
+    return EffortEfficiencyDetailOut.from_result_and_history(match, start, end, history)
 
 
 @router.get(

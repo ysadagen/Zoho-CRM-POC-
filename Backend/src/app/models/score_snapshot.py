@@ -14,12 +14,13 @@ append the customer-health, effort-efficiency, and beat-planning snapshots.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -52,6 +53,15 @@ class HealthClassification(StrEnum):
     STABLE = "STABLE"
     AT_RISK = "AT_RISK"
     CRITICAL = "CRITICAL"
+
+
+class EffortQuadrant(StrEnum):
+    """Effort x efficiency quadrant for a sales rep."""
+
+    HIGH_EFFORT_HIGH_EFFICIENCY = "HIGH_EFFORT_HIGH_EFFICIENCY"
+    HIGH_EFFORT_LOW_EFFICIENCY = "HIGH_EFFORT_LOW_EFFICIENCY"
+    LOW_EFFORT_HIGH_EFFICIENCY = "LOW_EFFORT_HIGH_EFFICIENCY"
+    LOW_EFFORT_LOW_EFFICIENCY = "LOW_EFFORT_LOW_EFFICIENCY"
 
 
 class LeadScore(Base):
@@ -151,4 +161,54 @@ class CustomerHealthScore(Base):
     )
     defaults_applied: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
+
+class EffortEfficiencyScore(Base):
+    """An append-only effort & efficiency snapshot for one rep + period (§3.10).
+
+    Cohort-relative (normalized within all active reps in the period), so it is
+    live-computed on read; snapshots are produced by the recompute endpoint.
+    """
+
+    __tablename__ = "effort_efficiency_scores"
+    __table_args__ = (
+        Index(
+            "ix_effort_efficiency_scores_rep_user_id_computed_at",
+            "rep_user_id",
+            "computed_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rep_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    config_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scoring_configs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+
+    effort_raw: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    effort_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    efficiency_components: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    efficiency_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    quadrant: Mapped[EffortQuadrant] = mapped_column(
+        Enum(
+            EffortQuadrant,
+            name="effort_quadrant",
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+        index=True,
     )

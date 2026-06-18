@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.lead import Lead
 from app.models.score_snapshot import (
     CustomerHealthScore,
+    EffortEfficiencyScore,
     LeadClassification,
     LeadScore,
 )
@@ -117,5 +118,17 @@ class ScoreSnapshotRepository:
             select(CustomerHealthScore)
             .where(CustomerHealthScore.customer_id == customer_id)
             .order_by(CustomerHealthScore.computed_at.desc())
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    # --- effort & efficiency scores --------------------------------------
+
+    async def effort_efficiency_history(
+        self, rep_user_id: uuid.UUID
+    ) -> list[EffortEfficiencyScore]:
+        stmt = (
+            select(EffortEfficiencyScore)
+            .where(EffortEfficiencyScore.rep_user_id == rep_user_id)
+            .order_by(EffortEfficiencyScore.computed_at.desc())
         )
         return list((await self._session.execute(stmt)).scalars().all())
