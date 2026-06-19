@@ -50,11 +50,26 @@ const ORDERS = [
   },
 ];
 
+const ACTIVITY = {
+  id: 'act1',
+  customer_id: 'c1',
+  lead_id: null,
+  type: 'VISIT',
+  occurred_at: '2026-05-20T10:00:00Z',
+  duration_minutes: 30,
+  remarks: 'Quarterly site visit',
+  created_by_user_id: 'u-1',
+  created_at: '2026-05-20T10:00:00Z',
+};
+
 function handlers() {
   return [
     http.get(`${BASE}/customers/c1`, () => HttpResponse.json(CUSTOMER)),
     http.get(`${BASE}/sales-orders`, () =>
       HttpResponse.json({ items: ORDERS, total: 1, limit: 50, offset: 0 }),
+    ),
+    http.get(`${BASE}/activities`, () =>
+      HttpResponse.json({ items: [ACTIVITY], total: 1, limit: 50, offset: 0 }),
     ),
   ];
 }
@@ -78,6 +93,29 @@ describe('CustomerDetailPage', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Sales orders' }));
     expect(await screen.findByText('SO-202605-000001')).toBeInTheDocument();
+  });
+
+  it('lists the customer activities on the Activity tab', async () => {
+    server.use(...handlers());
+    seedSession();
+    const user = userEvent.setup();
+    renderWithProviders(<AppRouter />, { route: '/customers/c1' });
+    await screen.findByRole('heading', { name: 'Acme Distributors' });
+
+    await user.click(screen.getByRole('tab', { name: 'Activity' }));
+    expect(await screen.findByText('Quarterly site visit')).toBeInTheDocument();
+  });
+
+  it('opens the Log Activity modal from the Activity tab', async () => {
+    server.use(...handlers());
+    seedSession();
+    const user = userEvent.setup();
+    renderWithProviders(<AppRouter />, { route: '/customers/c1' });
+    await screen.findByRole('heading', { name: 'Acme Distributors' });
+
+    await user.click(screen.getByRole('tab', { name: 'Activity' }));
+    await user.click(screen.getByRole('button', { name: 'Log activity' }));
+    expect(await screen.findByRole('dialog', { name: 'Log Activity' })).toBeInTheDocument();
   });
 
   it('opens the edit drawer prefilled', async () => {

@@ -24,11 +24,12 @@ export function BatchesToolbar({
   expiringBefore,
   onExpiringBefore,
 }: BatchesToolbarProps): JSX.Element {
+  // The status <select> only renders StatusFilter option values, so casting
+  // e.target.value to StatusFilter is sound.
   return (
     <div className="toolbar">
       <select
-        className="select"
-        style={{ width: 'auto', minHeight: 'auto' }}
+        className="select field-auto"
         value={itemId}
         onChange={(e) => onItem(e.target.value)}
         aria-label="Filter by item"
@@ -42,8 +43,7 @@ export function BatchesToolbar({
       </select>
 
       <select
-        className="select"
-        style={{ width: 'auto', minHeight: 'auto' }}
+        className="select field-auto"
         value={status}
         onChange={(e) => onStatus(e.target.value as StatusFilter)}
         aria-label="Filter by status"
@@ -59,8 +59,7 @@ export function BatchesToolbar({
       <label className="flex items-center gap-8 text-muted fs-12">
         Expiring before
         <input
-          className="input"
-          style={{ width: 'auto', minHeight: 'auto' }}
+          className="input field-auto"
           type="date"
           value={expiringBefore}
           onChange={(e) => onExpiringBefore(e.target.value)}

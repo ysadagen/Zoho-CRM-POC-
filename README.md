@@ -34,11 +34,24 @@ Zoho CRM Core APIs
 Zoho CRM
 ```
 
+A separate **Intelligence service** runs the deterministic AI scoring engines
+(lead scoring, customer health, effort & efficiency, beat planning) on the
+**same `inventory_db`** — it reads the Backend-owned CRM tables and owns the
+scoring tables. It never talks to the Backend over HTTP; the only coupling is
+the shared database (and the shared JWT secret, so it validates the Backend's
+tokens).
+
+```text
+Intelligence Service - FastAPI   (reads CRM tables, owns scoring tables)
+    ↓
+Inventory DB - PostgreSQL        (shared with the Backend)
+```
+
 For Phase 1, both databases can run on the same PostgreSQL server as separate logical databases:
 
 ```text
 PostgreSQL Server
-  ├── inventory_db
+  ├── inventory_db        (Backend = CRM/stock owner · Intelligence = scoring owner)
   └── integration_db
 ```
 
@@ -132,7 +145,7 @@ The POC should remain simple. Advanced features such as production planning, acc
 
 ## Repository Layout
 
-This is a **monorepo with multiple deployable services**. One Git repo, three
+This is a **monorepo with multiple deployable services**. One Git repo, four
 services, one shared local Postgres for dev.
 
 ```
@@ -156,16 +169,25 @@ Code/
 │   ├── .env.example
 │   └── pyproject.toml
 │
+├── Intelligence/               # FastAPI — AI scoring engines (shares inventory_db)
+│   ├── CLAUDE.md
+│   ├── README.md
+│   ├── .env.example
+│   └── pyproject.toml
+│
 ├── Frontend/                   # React (later phase)
 │
 └── README.md                   # you are here
 ```
 
-Each service owns its own database (`inventory_db`, `integration_db`), its
-own dependencies, its own lifecycle. They communicate over HTTP. The
-Frontend talks only to the Backend. The Backend talks only to the
-Integration Layer for CRM concerns. The Integration Layer is the **only**
-service that talks to Zoho.
+The Backend and Integration Layer each own a database (`inventory_db`,
+`integration_db`); the Intelligence service shares `inventory_db` (reads CRM
+tables, owns the scoring tables via its own Alembic chain). Each service has
+its own dependencies and lifecycle. The Frontend talks only to the Backend.
+The Backend talks only to the Integration Layer for CRM concerns; the
+Integration Layer is the **only** service that talks to Zoho. The Intelligence
+service has no HTTP coupling — it reads the shared DB and validates the
+Backend's JWTs (shared secret).
 
 ---
 
@@ -241,11 +263,17 @@ uv run uvicorn app.main:app --reload --app-dir src --port 8000
 # Integration Layer (in another PowerShell window)
 cd "Integration Layer"
 uv run uvicorn app.main:app --reload --app-dir src --port 8001
+
+# Intelligence — AI scoring; another window. Shares inventory_db.
+cd Intelligence
+uv run alembic upgrade head      # first time on a fresh DB: creates the scoring tables
+uv run uvicorn app.main:app --reload --app-dir src --port 8002
 ```
 
 OpenAPI docs:
 - Backend: <http://localhost:8000/docs>
 - Integration Layer: <http://localhost:8001/docs>
+- Intelligence: <http://localhost:8002/docs>
 
 > Until the app code is written (Phase 1 of each service), the `uvicorn`
 > commands will fail because `app.main` doesn't exist yet. The DB and env
@@ -265,6 +293,7 @@ Each service has its own deeper command list in its README:
 
 - [Backend/README.md](./Backend/README.md) — tests, lint, migrations, etc.
 - [Integration Layer/README.md](./Integration%20Layer/README.md) — same plus webhook + idempotency notes.
+- [Intelligence/README.md](./Intelligence/README.md) — AI scoring engines, recompute, its own migration chain.
 
 ---
 
@@ -276,6 +305,8 @@ Each service has its own deeper command list in its README:
 | Run the project locally for the first time | This file → *Local Development Setup* |
 | Change code in the Backend | [`Backend/CLAUDE.md`](./Backend/CLAUDE.md) |
 | Change code in the Integration Layer | [`Integration Layer/CLAUDE.md`](./Integration%20Layer/CLAUDE.md) |
+| Change code in the Intelligence service | [`Intelligence/CLAUDE.md`](./Intelligence/CLAUDE.md) |
+| Run the AI scoring engines / recompute | [`Intelligence/README.md`](./Intelligence/README.md) |
 | Add a new env var | The service's `.env.example` + `app/core/config.py` |
 | Add a new database | `db/init/01-create-databases.sql` + `docker compose down -v && docker compose up -d --build` |
 

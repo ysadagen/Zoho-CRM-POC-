@@ -59,6 +59,8 @@ export function IngredientsEditor({
 
   const commit = (next: Row[]): void => {
     setRows(next);
+    // Row carries exactly the name/qty/unit fields serializeIngredients reads,
+    // so narrowing the editor rows to IngredientLine[] is safe.
     onChange(serializeIngredients(next as IngredientLine[]));
   };
 

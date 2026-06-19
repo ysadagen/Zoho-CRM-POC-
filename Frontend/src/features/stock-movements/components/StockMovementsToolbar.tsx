@@ -39,8 +39,7 @@ export function StockMovementsToolbar({
   return (
     <div className="toolbar">
       <select
-        className="select"
-        style={{ width: 'auto', minHeight: 'auto' }}
+        className="select field-auto"
         value={itemId}
         onChange={(e) => onItem(e.target.value)}
         aria-label="Filter by item"

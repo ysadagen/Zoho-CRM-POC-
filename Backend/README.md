@@ -300,30 +300,13 @@ docker compose exec db psql -U postgres -d inventory_db -c ^
 After the next login the new admin can call `GET /api/v1/users` and any
 other admin-gated endpoint.
 
-### Intelligence recompute (nightly)
+### AI scoring (separate service)
 
-The four scoring engines compute live on read; lead scores additionally
-persist on write. Score **snapshots** (for trend history, and to reconcile
-lead cohort drift) are produced by the admin-only recompute endpoint:
-
-```
-POST /api/v1/intelligence/recompute   {"engine": null}   # null = all engines
-```
-
-It is synchronous and returns per-engine entity counts plus the run's
-duration. Schedule it nightly with no new infrastructure — a Windows Task
-Scheduler task (or cron) that POSTs to the endpoint with an admin token:
-
-```powershell
-# Windows Task Scheduler action (runs nightly):
-curl -X POST http://localhost:8000/api/v1/intelligence/recompute ^
-  -H "Authorization: Bearer <admin-token>" ^
-  -H "Content-Type: application/json" -d "{\"engine\": null}"
-```
-
-Snapshots are append-only — each run inserts a fresh row per entity and never
-mutates prior ones, so the history (and any A/B comparison across config
-versions) is preserved.
+The deterministic scoring engines (lead scoring, customer health, effort &
+efficiency, beat planning) live in the **Intelligence service** — a separate
+FastAPI app (port 8002) that shares `inventory_db`, *reads* this Backend's CRM
+tables, and *owns* the scoring tables. The Backend itself does no scoring. See
+`../Intelligence/README.md`.
 
 ---
 

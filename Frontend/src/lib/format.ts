@@ -15,10 +15,6 @@ const QTY_NF = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 3,
 });
 
-const INT_NF = new Intl.NumberFormat('en-IN', {
-  maximumFractionDigits: 0,
-});
-
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   month: 'short',
@@ -75,12 +71,6 @@ export function formatSignedQuantity(
   return unit ? `${sign}${num} ${unit}` : `${sign}${num}`;
 }
 
-export function formatInteger(value: string | number | null | undefined): string {
-  const n = toFiniteNumber(value);
-  if (n === null) return '—';
-  return INT_NF.format(n);
-}
-
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '—';
   const d = value instanceof Date ? value : new Date(value);
@@ -126,14 +116,4 @@ export function formatLongDate(value: string | Date | null | undefined): string 
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
   return `${WEEKDAY_FMT.format(d)}, ${DATE_FMT.format(d)}`;
-}
-
-/**
- * Server expects `YYYY-MM-DD` for date-only fields (vendor terms, order dates).
- */
-export function toIsoDate(value: Date): string {
-  const yyyy = value.getFullYear();
-  const mm = String(value.getMonth() + 1).padStart(2, '0');
-  const dd = String(value.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }

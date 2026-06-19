@@ -193,10 +193,7 @@ export function ReceivePoModal({ po, onClose, onReceived }: ReceivePoModalProps)
               ))}
 
               <div className="flex justify-between items-center gap-8">
-                <span
-                  className="text-muted"
-                  style={lineMismatch ? { color: 'var(--danger)' } : undefined}
-                >
+                <span className={lineMismatch ? 'text-danger' : 'text-muted'}>
                   {`Allocated ${allocated} / ${expected}`}
                 </span>
                 <Button variant="sec" onClick={() => append(emptyReceiveLot(line.item_id))}>

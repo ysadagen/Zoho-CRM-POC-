@@ -112,7 +112,9 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
   } = useForm<ItemCreateValues>({
     resolver: isCreate
       ? zodResolver(itemCreateSchema)
-      : (zodResolver(itemEditSchema) as Resolver<ItemCreateValues>),
+      : // Edit schema is a structural subset of create values (sku/type are
+        // fixed on edit), so its resolver is shape-compatible with the form.
+        (zodResolver(itemEditSchema) as Resolver<ItemCreateValues>),
     defaultValues:
       isCreate || !item
         ? EMPTY_CREATE

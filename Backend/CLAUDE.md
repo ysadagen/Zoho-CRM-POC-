@@ -121,11 +121,14 @@ Backend/
 > `docker compose up -d` from the `Code/` directory.
 
 > **Note on `scripts/`:** a `Backend/scripts/` folder holds standalone
-> operational scripts (currently `seed_demo.py`, the deterministic
-> intelligence-layer demo seeder). It is **not** imported by the app; scripts
-> add `src` to `sys.path` themselves. Sanctioned by
-> `INTELLIGENCE_SPECIFICATION.md` §16. `services/scoring/` (the Phase-2B engine
-> subpackage) is likewise sanctioned there.
+> operational scripts (currently `seed_demo.py`, the deterministic demo
+> seeder for CRM data). It is **not** imported by the app; scripts add `src`
+> to `sys.path` themselves. Sanctioned by `INTELLIGENCE_SPECIFICATION.md` §16.
+>
+> **Note on AI scoring:** the scoring engines are **not** in this Backend —
+> they live in the separate `../Intelligence/` service (shares `inventory_db`,
+> reads the CRM tables, owns the scoring tables). Don't add `services/scoring/`
+> here.
 
 If you need a new concept (e.g. `events/`, `tasks/`), **ask first**. Don't
 quietly invent new top-level packages.

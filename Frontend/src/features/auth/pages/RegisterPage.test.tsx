@@ -7,18 +7,9 @@ import { http, HttpResponse } from 'msw';
 import { AppRouter } from '@/app/router';
 import { clearSession } from '@/auth/token-storage';
 import { renderWithProviders, TEST_USER } from '@/test/utils';
+import { dashboardHandlers } from '@/test/dashboardHandlers';
 
 const BASE = 'http://localhost:8000/api/v1/auth';
-const API = 'http://localhost:8000/api/v1';
-const emptyList = () => HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 });
-
-/** The dashboard (post-register destination) fires these read queries on mount. */
-const dashboardHandlers = [
-  http.get(`${API}/items`, emptyList),
-  http.get(`${API}/stock-movements`, emptyList),
-  http.get(`${API}/purchase-orders`, emptyList),
-  http.get(`${API}/sales-orders`, emptyList),
-];
 
 const server = setupServer();
 

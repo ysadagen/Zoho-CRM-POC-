@@ -582,3 +582,47 @@ The design team should ask before they start:
 This document is intentionally exhaustive about Phase 1 and silent about
 Phase 2+. If a screen, field, or behaviour is **not** listed here, treat it
 as out of scope and ask before designing it.
+
+---
+
+# Phase 2C — Intelligence surfaces (extension)
+
+Surfaces for the deterministic AI scoring (see `../INTELLIGENCE_SPECIFICATION.md`
+§4–§10). **Data sources span two services:** CRM entities (leads, activities)
+are created/edited via the **Backend** (`http://localhost:8000`); all **scores**
+are read live from the separate **Intelligence service**
+(`env.intelligenceBaseUrl`, `http://localhost:8002`) through the single axios
+client with a per-request `baseURL` override. The request-ID, 401, and
+error-envelope contracts (§5) apply unchanged — Intelligence returns the same
+envelope.
+
+Shared primitive: **`ClassificationBadge`** (`components/ui`) renders every
+band (HOT/MEDIUM/COLD · HEALTHY/STABLE/AT_RISK/CRITICAL · CRITICAL/HIGH/MEDIUM/
+LOW) as colour **and** text.
+
+Slices (shipped one at a time; stop for user testing after each):
+
+- **2C.1 Foundations** ✅ — connectivity wiring, classification enums,
+  `ClassificationBadge`. (No page yet.)
+- **2C.2 Leads** — list (Backend `/leads`) with a `ClassificationBadge`
+  (lead band from Intelligence `/lead-scores`), filters (stage, source, owner,
+  classification); create/edit; detail with the five-parameter score breakdown
+  (five bars + a "defaults applied" note when present) and a guarded
+  stage-transition modal (WON needs `won_value`, LOST needs `lost_reason`).
+- **2C.3 Activities** — "log activity" modal (from a lead or customer) +
+  an activity timeline on both detail views (Backend `/activities`).
+- **2C.4 Customer health** — classification chips, a sortable health table
+  (lowest health first), and a detail drawer with the CPS vs CRS component
+  breakdown + a trend sparkline from snapshots (Intelligence `/customer-health`).
+- **2C.5 Team performance** — effort × efficiency quadrant scatter (threshold
+  60 on both axes) with per-rep drill-down (Intelligence `/effort-efficiency`).
+- **2C.6 Beat plan** — rep selector, ranked visit list with the VPS breakdown,
+  and district cluster grouping (Intelligence `/beat-plan`).
+- **2C.7 Dashboard** — hot-lead count, at-risk-customer count, and a funnel
+  widget (NEW → … → WON/LOST).
+
+Non-negotiables (§5) carry over verbatim — every danger toast still shows the
+Request ID, no second HTTP client, no `console.*` outside the logger.
+
+> Read access only for scores; admin-only config/recompute endpoints are **not**
+> surfaced in this phase (they're operated via the Intelligence `/docs`).

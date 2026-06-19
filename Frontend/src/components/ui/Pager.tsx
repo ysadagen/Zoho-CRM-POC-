@@ -35,11 +35,8 @@ export function Pager({
       <div className="flex items-center gap-12">
         <label className="flex items-center gap-8 fs-12 text-muted">
           Rows
-          {/* Inline sizing only (width/min-height) — consistent with the
-              data-driven inline sizing ProgressBar/Skeleton use. */}
           <select
-            className="select"
-            style={{ width: 'auto', minHeight: 'auto' }}
+            className="select field-auto"
             value={limit}
             onChange={(e) => onChange({ limit: Number(e.target.value), offset: 0 })}
             aria-label="Rows per page"

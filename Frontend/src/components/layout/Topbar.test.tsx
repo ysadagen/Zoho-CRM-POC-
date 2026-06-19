@@ -2,22 +2,14 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setupServer } from 'msw/node';
-import { http, HttpResponse } from 'msw';
 
 import { AppRouter } from '@/app/router';
 import { clearSession } from '@/auth/token-storage';
 import { renderWithProviders, seedSession } from '@/test/utils';
-
-const API = 'http://localhost:8000/api/v1';
-const emptyList = () => HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 });
+import { dashboardHandlers } from '@/test/dashboardHandlers';
 
 // The dashboard (the route under test) fires these read queries on mount.
-const server = setupServer(
-  http.get(`${API}/items`, emptyList),
-  http.get(`${API}/stock-movements`, emptyList),
-  http.get(`${API}/purchase-orders`, emptyList),
-  http.get(`${API}/sales-orders`, emptyList),
-);
+const server = setupServer(...dashboardHandlers);
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => {

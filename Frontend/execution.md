@@ -1097,6 +1097,127 @@ pass (+3).
 
 ---
 
+## Phase 2C.1 — Intelligence foundations ✅ SHIPPED
+
+**Goal:** the wiring every intelligence surface (2C.2–2C.7) builds on, with no
+dead UI yet.
+
+**Shipped:**
+- **Connectivity** — the AI scores live in the separate **Intelligence service**
+  (port 8002), not the Backend. Added `VITE_INTELLIGENCE_BASE_URL`
+  (`.env.example`) + `env.intelligenceBaseUrl`. Per the agreed approach we keep
+  the **single axios client**: intelligence calls pass a per-request `baseURL`
+  override, so the request-ID / 401 / error-envelope contracts still apply
+  (Intelligence returns the same `{error:{code,message,request_id}}` shape).
+  No second HTTP client.
+- **Enums** (`types/enums.ts`) mirroring the Intelligence service:
+  `LeadClassification`, `HealthClassification`, `VisitPriority`.
+- **`ClassificationBadge`** (`components/ui/`) — maps a classification to the
+  shared `Badge` (colour **and** text, a11y §10); a `scale` discriminator
+  disambiguates overlapping values (lead MEDIUM = amber vs priority MEDIUM =
+  blue). 6 tests.
+
+**Verification:** `npm run verify` clean (lint + build); **341 tests pass**;
+coverage thresholds hold.
+
+**Files:** `.env.example`, `src/config/env.ts`, `src/types/enums.ts`,
+`src/components/ui/ClassificationBadge.{tsx,test.tsx}`.
+
+**How to test (you):**
+```powershell
+npm run test -- ClassificationBadge      # the new badge mapping
+npm run verify                           # lint + build + full suite
+```
+> The Intelligence service must be running on **8002** for the 2C.2+ pages to
+> load scores: `cd ..\Intelligence; uv run uvicorn app.main:app --app-dir src --port 8002`.
+
+---
+
+## Phase 2C.2–2C.7 — Intelligence surfaces ✅ SHIPPED
+
+The five intelligence screens (UI_SPECIFICATION "Phase 2C"). Scores are read
+live from the **Intelligence service** (`env.intelligenceBaseUrl`, :8002) via
+the single axios client with a per-request `baseURL` override; CRM data
+(leads, activities) stays on the Backend (:8000). All routes are gated by
+`ProtectedRoute` and added to `navItems`.
+
+- **2C.2 Leads** (`features/leads/`) — list (Backend `/leads`) with stage +
+  Hot/Medium/Cold badges (joined from Intelligence `/lead-scores`), stage +
+  classification filters; create/edit drawer (RHF+Zod, assigned to the
+  session user); detail page with the five-parameter score breakdown
+  (`LeadScorePanel`, + a "defaults applied" notice) and a guarded
+  `StageTransitionModal` (WON needs a value, LOST a reason; legal moves only).
+- **2C.3 Activities** (`features/activities/`) — `LogActivityModal` (RHF+Zod,
+  Request-ID danger toast) + `ActivityTimeline`, wired into the lead detail.
+- **2C.4 Customer Health** (`features/customer-health/`) — classification
+  table (lowest health first), filter, CPS/CRS breakdown drawer.
+- **2C.5 Team Performance** (`features/team-performance/`) — effort×efficiency
+  quadrant scatter (60/60 thresholds) + per-rep table & drill-down.
+- **2C.6 Beat Plan** (`features/beat-plan/`) — rep selector, district clusters
+  (LDS, opportunity flag), suggested beat + full ranked visit-priority list.
+- **2C.7 Dashboard** — `IntelligenceSummary` widget: hot-lead count, at-risk
+  count (AT_RISK+CRITICAL), and the lead funnel (NEW → … → WON/LOST).
+
+**Connectivity:** decided "single client + second base URL" — no second HTTP
+client; the request-ID / 401 / error-envelope contracts apply to Intelligence
+calls unchanged.
+
+**Verification:** `npm run verify` clean (lint + build); **378 tests pass**
+(90 files); `npm run test:coverage` thresholds hold (94.3% lines overall).
+
+**Follow-up — DONE:** the activity timeline is now wired into the *customer*
+detail too, as an **Activity** tab (`CustomerDetailPage`) reusing the existing
+`ActivityTimeline` (`customerId`) + `LogActivityModal` (`customerId`) — no new
+API or types, pure page composition mirroring the lead-detail wiring. Covered
+by two new `CustomerDetailPage` tests (list activities on the tab; open the Log
+Activity modal). This closes the only outstanding 2C item.
+
+**How to test (you):**
+```powershell
+npm run verify            # lint + build + full suite
+npm run test:coverage     # enforce coverage thresholds
+npm run dev               # browse /leads, /customer-health, /team-performance, /beat-plan,
+                          #   and a customer's detail → Activity tab (log + timeline)
+```
+> The Intelligence service must be running on **8002** (and the Backend on
+> 8000) for the score-backed screens to load live data.
+
+---
+
+## Compliance hardening pass (post-2C)
+
+A four-dimension audit against the CLAUDE.md contract (layering/§4·§6, the §5
+non-negotiables, §9·§11 types/logging, §8 forms + design system). The §5
+non-negotiables and the API-boundary/env/no-direct-axios rules were already
+clean. Fixes applied (all behaviour-preserving — **375 tests green, lib 100%
+lines / global 94.29%, lint 0 warnings**):
+
+- **Design system (no inline colour/spacing):** extracted three utilities
+  (`.text-danger`, `.row-click`, `.field-auto`) into `globals.css` and replaced
+  the inline `style={{…}}` on 7 toolbar/Pager selects, the `ReceivePoModal`
+  allocation colour, and the `RepEfficiencyTable` row cursor. Genuinely dynamic
+  inline styles (QuadrantScatter geometry, ProgressBar/Skeleton sizing) are
+  correct and were left.
+- **Dead code (§11):** deleted the unused `lib/api/types.ts` re-export shim
+  (zero importers; `Paginated`/`ApiErrorEnvelope` live in `types/api.types.ts`,
+  §3 updated) and the unused `formatInteger` / `toIsoDate` (+ `INT_NF`) helpers
+  and their tests.
+- **`as`-cast justifications (§11):** added one-line "why" comments to the
+  enum/URL-filter/select-narrowing casts that lacked them (item.transform,
+  ItemFormDrawer resolver, token-storage, the list-page filter casts, the
+  toolbar select casts, IngredientsEditor).
+
+Deliberately **not** changed, with rationale: `dashboard/useIntelligenceSummary`
+importing other features' `*.api.ts` is intentional — the dashboard keeps its
+own query keys to avoid coupling to those features' caches; routing through
+their hooks would increase coupling. `OrderLine` stays exported as the public
+param type of `estimatedTotal`. Routing `422` field errors to `setError` on the
+confirmation/action modals (vs. the entity create/edit drawers, which already
+do) is an optional §8 nicety — the danger toast already carries the Request ID
+per §5.6 — left for a focused forms pass if desired.
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.

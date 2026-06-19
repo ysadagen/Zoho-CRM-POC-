@@ -77,6 +77,9 @@ export function summariseMovements(movements: StockMovement[]): MovementSummary 
 /** RAW detail block from form values (drops blank optionals; keeps the boolean). */
 function buildRawDetail(values: ItemEditValues): RawItemDetailInput {
   const detail: RawItemDetailInput = { is_hazardous: values.is_hazardous };
+  // Enum casts here (and in buildFinishedDetail/applyPharma): the Zod schema
+  // already constrains these fields to their enum union (or ''), so a truthy
+  // value is guaranteed to be a valid member — the cast just drops the '' arm.
   if (values.material_classification) {
     detail.material_classification = values.material_classification as MaterialClassification;
   }
@@ -177,6 +180,7 @@ export function parseIngredients(raw: string | null): IngredientLine[] | null {
   const lines: IngredientLine[] = [];
   for (const entry of values) {
     if (!entry || typeof entry !== 'object') continue;
+    // Guarded by the object check above; treat the entry as a string-keyed bag.
     const record = entry as Record<string, unknown>;
     const name = typeof record.name === 'string' ? record.name : null;
     if (!name) continue;

@@ -48,6 +48,8 @@ export function BatchesListPage(): JSX.Element {
     limit,
     offset,
     item_id: itemId || undefined,
+    // `status` only holds a fixed filter option; '' maps to no filter, so the
+    // cast narrows the remaining string to the query enum.
     status: status === '' ? undefined : (status as BatchStatus),
     expiring_before: expiringBefore || undefined,
   });

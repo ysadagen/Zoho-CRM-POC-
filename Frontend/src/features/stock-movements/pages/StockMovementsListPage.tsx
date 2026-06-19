@@ -80,6 +80,8 @@ export function StockMovementsListPage(): JSX.Element {
     limit,
     offset,
     item_id: itemId || undefined,
+    // direction/reason only hold a fixed filter option; 'ALL' maps to no
+    // filter, so each cast narrows the remaining string to its query enum.
     direction: direction === 'ALL' ? undefined : (direction as MovementDirection),
     reason: reason === 'ALL' ? undefined : (reason as MovementReason),
   });

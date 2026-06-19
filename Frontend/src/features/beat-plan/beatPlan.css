@@ -1,0 +1,11 @@
+/* Beat Plan page-local layout only. Reusable styles live in globals.css. */
+
+.beat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+.beat-toolbar .field {
+  min-width: 240px;
+}

@@ -1,6 +1,17 @@
 /* Dashboard-specific layout — ported from the design's index.html <style>.
    Shared, reusable styles live in globals.css; these are page-local. */
 
+/* Lead-funnel row: label | bar | count. */
+.funnel-row {
+  display: grid;
+  grid-template-columns: 7rem 1fr 2rem;
+  align-items: center;
+  gap: 8px;
+}
+.funnel-row .val {
+  text-align: right;
+}
+
 .dash-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;

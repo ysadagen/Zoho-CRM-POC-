@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw';
 
 import { clearSession } from '@/auth/token-storage';
 import { renderWithProviders, seedSession } from '@/test/utils';
+import { dashboardHandlers } from '@/test/dashboardHandlers';
 
 import { DashboardPage } from './DashboardPage';
 
@@ -14,13 +15,13 @@ const emptyList = () => HttpResponse.json({ items: [], total: 0, limit: 100, off
 
 let itemCalls = 0;
 const server = setupServer(
+  // Count item fetches to prove Refresh refetches; this overrides the shared
+  // items handler (first matching handler wins).
   http.get(`${BASE}/items`, () => {
     itemCalls += 1;
     return emptyList();
   }),
-  http.get(`${BASE}/stock-movements`, emptyList),
-  http.get(`${BASE}/purchase-orders`, emptyList),
-  http.get(`${BASE}/sales-orders`, emptyList),
+  ...dashboardHandlers,
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
