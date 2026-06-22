@@ -9,6 +9,23 @@ logs, idempotency keys, and webhook intake.
 
 ---
 
+## Build status
+
+Built and tested today (Track A — ingest-led, see
+`../ZOHO_INTEGRATION_EXECUTION_PLAN.md`):
+
+- **A0** — app factory, config, Alembic + the 5-table migration, OAuth
+  `token_service`, `ZohoClient` read path. Endpoints: `GET /health`,
+  `GET /health/zoho`.
+- **A1** — Zoho → app ingest (`BackendClient` + `ingest_service`). Endpoints:
+  `POST /api/v1/ingest/run`, `GET /api/v1/ingest/status` (internal-key auth).
+
+Planned / not yet built (Track B — push, deferred, needs a paid Zoho edition):
+`/api/v1/sync/...`, `/api/v1/webhooks/zoho`, `/api/v1/admin/...`. Sections below
+describing those endpoints document the **target** contract, not current state.
+
+---
+
 ## Prerequisites
 
 - **Python 3.14** (`.python-version` pins it)
@@ -63,17 +80,11 @@ uv sync
 
 ### 4. Apply database migrations
 
-*(Skip this step until Phase 2 of this service's build plan — Alembic isn't
-wired yet.)*
-
 ```powershell
 uv run alembic upgrade head
 ```
 
 ### 5. Run the dev server
-
-*(Skip this step until Phase 1 of this service's build plan — the app
-factory isn't written yet.)*
 
 ```powershell
 uv run uvicorn app.main:app --reload --app-dir src --port 8001
@@ -91,7 +102,7 @@ side by side locally.
 ```powershell
 # tests
 uv run pytest -q
-uv run pytest -q tests/test_sync.py::test_sync_customer_happy_path
+uv run pytest -q tests/test_ingest_service.py::test_run_creates_lead_activity_and_applies_won_deal
 
 # lint + format
 uv run ruff check
@@ -145,9 +156,10 @@ Do not read environment variables anywhere else in the code.
 
 ---
 
-## Inbound auth (from Backend)
+## Inbound auth (from Backend / ingest trigger)
 
-Every request to `/api/v1/sync/...` and `/api/v1/admin/...` must include:
+Every request to `/api/v1/ingest/...` (live today) and, when built,
+`/api/v1/sync/...` and `/api/v1/admin/...` must include:
 
 ```
 X-Internal-API-Key: <INTERNAL_API_KEY value>
