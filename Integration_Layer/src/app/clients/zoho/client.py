@@ -28,6 +28,7 @@ from app.clients.zoho.endpoints import (
     MODULE_CALLS,
     MODULE_DEALS,
     MODULE_EVENTS,
+    MODULE_FIELDS,
     MODULE_LEADS,
     MODULE_TASKS,
     USERS_PATH,
@@ -113,10 +114,13 @@ class ZohoClient:
         ``more_records`` up to a hard page cap so a pull is always bounded.
         """
         url = api_url(self._settings.zoho_api_base_url, module_path(module))
+        fields = MODULE_FIELDS[module]
         records: list[dict[str, Any]] = []
         for page in range(1, self._MAX_PAGES + 1):
             body = await self._request(
-                "GET", url, params={"page": page, "per_page": self._PAGE_SIZE}
+                "GET",
+                url,
+                params={"page": page, "per_page": self._PAGE_SIZE, "fields": fields},
             )
             data = body.get("data")
             if isinstance(data, list):

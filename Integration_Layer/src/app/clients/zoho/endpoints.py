@@ -25,6 +25,21 @@ MODULE_EVENTS = "Events"  # Meetings live in the Events module
 MODULE_TASKS = "Tasks"
 MODULE_DEALS = "Deals"
 
+# Zoho's v8 API requires an explicit ``fields`` query param on every module
+# GET (no default field set, unlike older API versions). Listed here, one
+# place, matching exactly what ``ingest_service.py`` reads off each record
+# type — keep these two in sync.
+MODULE_FIELDS: dict[str, str] = {
+    MODULE_LEADS: (
+        "id,Owner,Full_Name,Last_Name,Company,Lead_Source,Lead_Status,"
+        "Created_Time,Phone,Email,State,City,Converted_Deal"
+    ),
+    MODULE_CALLS: "id,Owner,What_Id,Who_Id,$se_module,Call_Start_Time,Call_Duration_in_seconds",
+    MODULE_EVENTS: "id,Owner,What_Id,Who_Id,$se_module,Start_DateTime,End_DateTime,Location",
+    MODULE_TASKS: "id,Owner,What_Id,Who_Id,$se_module,Created_Time,Due_Date",
+    MODULE_DEALS: "id,Owner,Stage,Amount,Closing_Date",
+}
+
 
 def module_path(module: str) -> str:
     """Return the record-list path for a CRM ``module`` (e.g. ``/Leads``)."""

@@ -12,7 +12,13 @@ import respx
 from httpx import Response
 
 from app.clients.zoho.client import ZohoClient
-from app.clients.zoho.endpoints import MODULE_LEADS, USERS_PATH, api_url, module_path
+from app.clients.zoho.endpoints import (
+    MODULE_FIELDS,
+    MODULE_LEADS,
+    USERS_PATH,
+    api_url,
+    module_path,
+)
 from app.clients.zoho.errors import (
     ZohoNotFoundError,
     ZohoRateLimitError,
@@ -91,6 +97,20 @@ async def test_get_leads_paginates_until_no_more_records() -> None:
         leads = await client.get_leads()
 
     assert [lead["id"] for lead in leads] == ["ZL1", "ZL2"]
+
+
+async def test_get_leads_sends_required_fields_param() -> None:
+    """Zoho's v8 API 400s a module GET with no ``fields`` (REQUIRED_PARAM_MISSING)."""
+    async with httpx.AsyncClient() as http_client, respx.mock as mock:
+        route = mock.get(_LEADS_URL).mock(
+            return_value=Response(200, json={"data": [], "info": {"more_records": False}})
+        )
+        client = _make_client(http_client, _StubTokenProvider())
+
+        await client.get_leads()
+
+    sent_params = dict(route.calls.last.request.url.params)
+    assert sent_params["fields"] == MODULE_FIELDS[MODULE_LEADS]
 
 
 async def test_get_leads_handles_empty_module() -> None:
