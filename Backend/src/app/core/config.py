@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     integration_layer_api_key: str
     integration_layer_timeout_seconds: int = 10
 
+    # Zoho ingest (Track A). When false, the internal ingest endpoints reject
+    # writes (503) — a belt-and-braces gate on top of the internal API key, so
+    # ingest is off by default and the engines stay deterministic until the
+    # Integration Layer is explicitly switched on. The IL has the matching flag
+    # that gates *pulling*; this one gates *accepting* ingested data.
+    zoho_ingest_enabled: bool = False
+
     # CORS
     cors_allowed_origins: str = ""
 

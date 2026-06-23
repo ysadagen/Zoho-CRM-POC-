@@ -478,3 +478,34 @@ buckets, multi-status any-of, no-threshold → IN_STOCK); full suite `ruff` +
 
 *Resolve the relevant `[DECIDE]`s, then we build that one slice, test it green,
 and stop for review before the next.*
+
+---
+
+## Zoho ingest — internal endpoints (Track A, cross-service)
+
+> Separate from the pharma roadmap above. Added for the Zoho CRM integration's
+> **Track A Phase A1** (ingest Zoho Leads/Activities/won Deals so the
+> Intelligence effort/efficiency engine scores rep productivity). Master plan:
+> `../ZOHO_INTEGRATION_EXECUTION_PLAN.md` §4/§7. The Integration Layer is the
+> only caller; see `Integration Layer/execution.md` for the puller side.
+
+### Phase A1 (Backend receiver) — ✅ SHIPPED (code) · 354 tests green
+- **Auth/gating:** `require_internal_api_key` (header `X-Internal-API-Key` vs
+  `INTEGRATION_LAYER_API_KEY`, constant-time) + `require_ingest_enabled` (503
+  unless `ZOHO_INGEST_ENABLED`, default false) — router-level deps on
+  `api/v1/ingest.py`. No JWT, no user (service-to-service).
+- **Endpoints:** `GET /api/v1/ingest/users`, `POST /api/v1/ingest/leads`,
+  `PATCH /api/v1/ingest/leads/{id}`, `POST /api/v1/ingest/activities`.
+- **Writer:** `services/ingest_service.py` — a Zoho mirror. Sets stage directly
+  + writes a `lead_stage_history` row (Zoho-authoritative; bypasses the
+  interactive transition-legality check, honours every DB CHECK), sets
+  `created_at` from the Zoho creation time, and a won Deal sets
+  `stage=WON`+`won_value`+`won_at` together. Owner is pre-resolved to a local id
+  by the IL; audit actor = that rep/owner.
+- **No schema change** (D-1): reuses `leads`/`sales_activities`; no `zoho_*`
+  columns, no migration. The IL owns the Zoho↔local id mapping.
+- **Decision — actor on ingested rows:** `created_by`/`updated_by`/`changed_by`
+  = the resolved rep/owner (the Zoho source), since ingest has no human actor.
+- **Tests:** `tests/test_ingest.py` — auth 401, disabled 503, user list, lead
+  create (owner + `source_created_at` + history), stage update, won-Deal CHECK,
+  activity attribution to `rep_user_id`, subject-required 422.

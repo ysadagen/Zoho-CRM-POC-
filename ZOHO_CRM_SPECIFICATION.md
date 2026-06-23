@@ -4,6 +4,17 @@
 using Zoho day-to-day, and engineers building the Integration Layer.
 **Counterpart:** `Frontend/UI_SPECIFICATION.md` (the inventory web app).
 **Architecture:** `README.md` (the project root).
+**Sequencing:** `ZOHO_INTEGRATION_EXECUTION_PLAN.md` (the cross-service plan).
+
+> **⚠️ Scope note (current engagement) — read first.** This document specifies the
+> **push** integration (inventory app → Zoho), which the cross-service plan calls
+> **Track B**. For the present setup (Zoho **Free**, 3 users, rep-productivity
+> goal), **Track A — ingest (Zoho → app, feeding the AI effort/efficiency
+> engine) — is built first**, and this push track is **deferred**: Zoho Free
+> lacks the Sales Order / Purchase Order / Product modules, so push needs a paid
+> edition. This doc stays authoritative for the **field mapping and push
+> behaviour** once Track B is unblocked; for sequencing and the ingest design,
+> `ZOHO_INTEGRATION_EXECUTION_PLAN.md` governs.
 
 This document answers two questions:
 
@@ -27,9 +38,16 @@ records**. Zoho CRM is the **relationship and visibility layer**.
 | Pricing, terms | Dashboards and reports across customers/vendors |
 | Source of truth for **what happened** | Source of truth for **the relationship around what happened** |
 
-**Sync direction for Phase 1:** **one-way only** — inventory app → Zoho CRM.
-Zoho is not the source of truth for any business state. Changes made in Zoho
-do **not** flow back into inventory.
+**Sync direction for the push (Track B):** **one-way** — inventory app → Zoho
+CRM. Zoho is not the source of truth for any business state. Changes made in
+Zoho do **not** flow back into inventory.
+
+> **Track A (ingest), built first, is also one-way — the other direction:** Zoho
+> **Leads / Activities / Deals** are pulled into the app to feed the AI
+> productivity engine. This is additive and **app-canonical** (the app stays the
+> system of record; the AI scores app-owned data) and does **not** make Zoho a
+> source of truth for any inventory state. See `ZOHO_INTEGRATION_EXECUTION_PLAN.md`
+> §4.
 
 ---
 

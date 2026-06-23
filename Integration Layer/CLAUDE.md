@@ -7,6 +7,14 @@ the conflict.
 
 ---
 
+> **Scope note (current engagement) — read with `../ZOHO_INTEGRATION_EXECUTION_PLAN.md`.**
+> The integration is split into two tracks. **Track A (build first) — ingest:**
+> pull Zoho Leads/Activities/Deals into the Backend so the AI effort/efficiency
+> engine can score rep productivity (Zoho **Free**, 3 users). **Track B (deferred,
+> needs a paid Zoho edition) — push:** mirror Customers/Vendors/Items/SO/PO into
+> Zoho. Every rule below (layering, idempotency, Zoho client, errors, tests)
+> applies to **both** tracks; ingest specifics are in **§19**.
+
 ## 1. What this service is
 
 The Integration Layer sits between the **Inventory Backend** and **Zoho CRM**.
@@ -17,32 +25,39 @@ It owns:
 - **OAuth lifecycle** for Zoho (`zoho_tokens` table) — refreshing access
   tokens, persisting refresh tokens, handling expiry.
 - **CRM mappings** (`crm_mappings`) — the bridge between local entity IDs
-  (customers, vendors, sales orders, purchase orders) and their Zoho record IDs.
-- **Sync logs** (`sync_logs`) — every outbound sync attempt, success or
-  failure, with payload + response + retry count.
+  (customers, vendors, sales orders, purchase orders) and their Zoho record IDs;
+  for ingest, also between Zoho Leads/Activities/Deals/Users and their local
+  counterparts (used for dedupe + rep attribution).
+- **Sync logs** (`sync_logs`) — every outbound sync **and** inbound ingest
+  attempt, success or failure, with payload + response + retry count.
 - **Idempotency** (`idempotency_keys`) — incoming Backend requests carry an
   `Idempotency-Key`; we dedupe so a retried sync never creates a duplicate
-  Zoho record.
+  Zoho record. (Ingest dedupes on the Zoho record id instead — see §19.)
 - **Webhook intake** (`webhook_events`) — Zoho → us events, signature-verified,
   stored, then processed.
+- **Ingest (Track A)** — pulling Zoho Leads, Activities, and won Deals and
+  writing them into the Backend (via its API, never cross-DB) so the AI layer
+  can score rep productivity. One-way (Zoho → app), idempotent, app-canonical.
+  See **§19**.
 - **Retries / backoff** for transient Zoho failures, and a dead-letter
   state for permanently failing syncs.
 
 It does **not**:
 
 - Hold inventory business state (stock, line items, etc.) — that's the Backend.
-- Have user-facing endpoints. Its callers are the Backend and Zoho's webhook
-  delivery system, **not** the React frontend.
+- Have user-facing endpoints. Its callers are the Backend, a scheduled ingest
+  trigger, and Zoho's webhook delivery system — **not** the React frontend.
 
 Parent context: see `../README.md` for the full project overview.
 
 ```
-Backend ──internal API──► Integration Layer ──Zoho Core APIs──► Zoho CRM
-                                  │
-                                  └── integration_db
-                                       (zoho_tokens, crm_mappings,
-                                        sync_logs, idempotency_keys,
-                                        webhook_events)
+Track B (push):    Backend ──internal API──► Integration Layer ──Zoho APIs──► Zoho CRM
+Track A (ingest):  Backend ◄──internal API── Integration Layer ◄──Zoho APIs── Zoho CRM
+                                                    │
+                                                    └── integration_db
+                                                         (zoho_tokens, crm_mappings,
+                                                          sync_logs, idempotency_keys,
+                                                          webhook_events)
 ```
 
 ---
@@ -92,8 +107,9 @@ Integration Layer/
 │       │   ├── __init__.py
 │       │   └── v1/
 │       │       ├── __init__.py
-│       │       ├── sync.py            # POST /sync/customers, /sync/vendors,
-│       │       │                      #     /sync/sales-orders, /sync/purchase-orders
+│       │       ├── sync.py            # Track B push: POST /sync/customers, /vendors,
+│       │       │                      #     /items, /sales-orders, /purchase-orders
+│       │       ├── ingest.py          # Track A: POST /ingest/run (Zoho → app) + status — see §19
 │       │       ├── webhooks.py        # POST /webhooks/zoho
 │       │       ├── admin.py           # GET /sync-logs, POST /sync-logs/{id}/retry
 │       │       └── health.py          # /health, /health/zoho
@@ -116,16 +132,19 @@ Integration Layer/
 │       │
 │       ├── schemas/                   # Pydantic request/response schemas
 │       │   ├── __init__.py
-│       │   ├── sync.py                # incoming sync payloads from Backend
-│       │   ├── webhook.py             # Zoho webhook payload shapes
-│       │   └── admin.py
+│       │   ├── health.py              # health probe responses (A0, built)
+│       │   ├── ingest.py              # ingest run summary + status (A1, built)
+│       │   ├── sync.py                # incoming sync payloads from Backend (Track B)
+│       │   ├── webhook.py             # Zoho webhook payload shapes (Track B)
+│       │   └── admin.py               # (Track B)
 │       │
 │       ├── services/                  # Business logic. Orchestrates repos + Zoho client.
 │       │   ├── __init__.py
 │       │   ├── token_service.py       # get-or-refresh access token, persistence
-│       │   ├── sync_service.py        # the sync state machine (idempotency → mapping → call → log)
+│       │   ├── sync_service.py        # Track B: push state machine (idempotency → mapping → call → log)
+│       │   ├── ingest_service.py      # Track A: pull Zoho → map + attribute → write to Backend (idempotent) — §19
 │       │   ├── webhook_service.py     # verify + persist + dispatch
-│       │   └── mapping_service.py     # local_id ↔ zoho_id resolution
+│       │   └── mapping_service.py     # local_id ↔ zoho_id resolution (push + ingest)
 │       │
 │       ├── repositories/              # All DB queries
 │       │   ├── __init__.py
@@ -137,11 +156,16 @@ Integration Layer/
 │       │
 │       ├── clients/                   # Outbound HTTP clients (this service is special — it has them)
 │       │   ├── __init__.py
-│       │   └── zoho/
+│       │   ├── zoho/
+│       │   │   ├── __init__.py
+│       │   │   ├── client.py          # ZohoClient: thin httpx wrapper, auth header, retries
+│       │   │   ├── oauth.py           # ZohoOAuthClient: refresh-token grant (A0)
+│       │   │   ├── endpoints.py       # URL builders / endpoint constants
+│       │   │   └── errors.py          # ZohoAPIError, ZohoRateLimitError, ZohoAuthError
+│       │   └── backend/               # 2nd outbound integration: IL → Backend ingest (A1)
 │       │       ├── __init__.py
-│       │       ├── client.py          # ZohoClient: thin httpx wrapper, auth header, retries
-│       │       ├── endpoints.py       # URL builders / endpoint constants
-│       │       └── errors.py          # ZohoAPIError, ZohoRateLimitError, ZohoAuthError
+│       │       ├── client.py          # BackendClient: POSTs ingested records to the Backend
+│       │       └── errors.py          # BackendError hierarchy
 │       │
 │       ├── middleware/
 │       │   ├── __init__.py
@@ -155,8 +179,10 @@ Integration Layer/
 │       │
 │       └── dependencies/              # FastAPI Depends() callables
 │           ├── __init__.py
-│           ├── auth.py                # require_internal_api_key, verify_zoho_signature
-│           └── db.py                  # get_db
+│           ├── auth.py                # require_internal_api_key (verify_zoho_signature → Track B)
+│           ├── db.py                  # get_db
+│           ├── zoho.py                # http client, oauth client, token service, ZohoClient (A0)
+│           └── ingest.py              # BackendClient + ingest service providers (A1)
 │
 ├── tests/
 │   ├── __init__.py
@@ -258,8 +284,9 @@ Same loop as the Backend. Don't skip steps.
 
 - All endpoints under `/api/v1/...`. New breaking shapes go to `/api/v2/...`,
   never mutate v1.
-- Internal sync endpoints live under `/api/v1/sync/...`. Webhooks under
-  `/api/v1/webhooks/...`. Admin/ops under `/api/v1/admin/...`.
+- Internal sync (push) endpoints live under `/api/v1/sync/...`. Ingest (pull)
+  under `/api/v1/ingest/...`. Webhooks under `/api/v1/webhooks/...`. Admin/ops
+  under `/api/v1/admin/...`.
 - Every endpoint declares `response_model=` and `tags=[...]` for OpenAPI.
 - Every endpoint has a one-line docstring — it shows up in `/docs`.
 - Status codes: `202 Accepted` for sync requests that we accept and queue/log
@@ -341,6 +368,9 @@ ZOHO_CLIENT_ID
 ZOHO_CLIENT_SECRET
 ZOHO_REFRESH_TOKEN       # bootstrap refresh token (stored encrypted in DB after first use)
 ZOHO_WEBHOOK_SECRET      # for HMAC verification of inbound webhooks
+
+BACKEND_BASE_URL         # Backend base URL for ingest write-back (Track A; default http://localhost:8000)
+ZOHO_INGEST_ENABLED      # gate the Zoho→app ingest run (Track A; default false)
 
 HTTP_TIMEOUT_SECONDS     # default 10
 HTTP_MAX_RETRIES         # default 3
@@ -545,3 +575,42 @@ When asked to add or change something in `Integration Layer/`:
 
 Anything outside `Integration Layer/` is off-limits unless the user explicitly
 opens that scope.
+
+---
+
+## 19. Ingest (Track A — Zoho → app)
+
+The current engagement builds **ingest before push** (see the scope note at the
+top). Ingest pulls Zoho **Leads, Activities (Calls/Meetings/Tasks), Users, and
+won Deals** and lands them in the Backend so the Intelligence effort/efficiency
+engine can score rep productivity. It reuses the same machinery as the push —
+this section only states what differs.
+
+- **Direction & ownership.** One-way Zoho → app. The IL **never writes
+  `inventory_db` directly** — it calls the Backend's internal ingest endpoints
+  (internal API key). The Backend stays the only writer of its own tables.
+- **Endpoints.** `api/v1/ingest.py` exposes the pull trigger(s)
+  (`POST /ingest/run`, or per-entity) and a status read; orchestration lives in
+  `services/ingest_service.py`. A scheduled trigger or an internal call drives
+  it — never the frontend.
+- **Mapping & dedupe.** Each ingested record gets a `crm_mappings` row keyed on
+  its Zoho id (`entity_type ∈ {lead, activity, deal, user}`). Re-pull is
+  idempotent: an existing mapping → update, not insert. Pull deltas via a
+  per-entity **watermark** (last-modified cursor). Note: ingest dedupes on the
+  Zoho record id, **not** the `Idempotency-Key` header (§12 is for inbound push).
+- **Rep attribution.** Resolve the Zoho record's **owner email → app
+  `users.email`** and store the mapping (`entity_type='user'`). Apply it to
+  `created_by_user_id` (activities) / `assigned_to_user_id` (leads). An
+  unmatched owner → **park** the record (log to `sync_logs`, status `PARKED`),
+  never guess, never hard-fail.
+- **Field mapping.** Zoho Call→`CALL`, Task→`FOLLOW_UP`, Meeting/Event→`MEETING`
+  (+ duration → time spent); Zoho Lead Status→app lead stage, owner→assignee;
+  Closed-Won Deal Amount/date → the lead's `won_value`/`won_at`. ("Visit" has no
+  native Zoho type — see the master plan §9 for the agreed convention.)
+- **Determinism.** Ingest is additive and flag-gated (`ZOHO_INGEST_ENABLED`).
+  The AI engines must produce identical output with ingest off; an ingest
+  failure must never corrupt app data. Scores are **never** pushed back to Zoho.
+- **Tests.** `respx`-mocked Zoho, never real. Cover: mapped record → one app
+  row; re-pull → no duplicate; unmatched owner → parked; flag off → no-op.
+- Full phasing + the AI-feed parameter mapping:
+  `../ZOHO_INTEGRATION_EXECUTION_PLAN.md` §4 and §7 (Track A).
