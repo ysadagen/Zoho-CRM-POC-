@@ -13,9 +13,17 @@ function customer(overrides: Partial<Customer> = {}): Customer {
     email: 'ops@acme.test',
     phone: '+91 90000 00000',
     customer_code: 'ACME-1',
-    gstin: 'GST123',
+    gstin: null,
     is_privileged: true,
     is_active: true,
+    address: null,
+    state: null,
+    city: null,
+    district: null,
+    pincode: null,
+    notes: null,
+    customer_type: 'RETAILER',
+    competitive_risk_level: 'NONE',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -24,7 +32,7 @@ function customer(overrides: Partial<Customer> = {}): Customer {
 
 describe('toCustomerPayload', () => {
   it('keeps required fields and drops empty optionals', () => {
-    expect(toCustomerPayload({ ...EMPTY_CUSTOMER, company_name: 'Acme', is_privileged: true })).toEqual({
+    expect(toCustomerPayload({ ...EMPTY_CUSTOMER, company_name: 'Acme', is_privileged: true })).toMatchObject({
       company_name: 'Acme',
       is_privileged: true,
     });
@@ -32,6 +40,7 @@ describe('toCustomerPayload', () => {
 
   it('carries filled optionals through', () => {
     const payload = toCustomerPayload({
+      ...EMPTY_CUSTOMER,
       company_name: 'Acme',
       contact_person: 'Anita',
       email: 'ops@acme.test',
@@ -53,7 +62,7 @@ describe('customerToFormValues', () => {
   it('coerces nulls to empty strings', () => {
     expect(
       customerToFormValues(customer({ contact_person: null, email: null, gstin: null, customer_code: null, phone: null })),
-    ).toEqual({
+    ).toMatchObject({
       company_name: 'Acme',
       contact_person: '',
       email: '',

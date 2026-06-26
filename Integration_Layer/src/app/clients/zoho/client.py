@@ -25,12 +25,17 @@ from typing import Any, Protocol
 import httpx
 
 from app.clients.zoho.endpoints import (
+    MODULE_ACCOUNTS,
     MODULE_CALLS,
     MODULE_DEALS,
     MODULE_EVENTS,
     MODULE_FIELDS,
     MODULE_LEADS,
+    MODULE_PRODUCTS,
+    MODULE_PURCHASE_ORDERS,
+    MODULE_SALES_ORDERS,
     MODULE_TASKS,
+    MODULE_VENDORS,
     USERS_PATH,
     api_url,
     module_path,
@@ -106,6 +111,70 @@ class ZohoClient:
         """Read all Deal records (Closed-Won → lead won_value/won_at)."""
         return await self._get_records(MODULE_DEALS)
 
+    # --- Track B push methods ------------------------------------------------
+
+    async def create_account(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a Zoho Account (Customer → Accounts)."""
+        url = api_url(self._settings.zoho_api_base_url, module_path(MODULE_ACCOUNTS))
+        return await self._request("POST", url, json_body={"data": [payload]})
+
+    async def update_account(self, zoho_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing Zoho Account by its Zoho id."""
+        url = api_url(self._settings.zoho_api_base_url, f"{module_path(MODULE_ACCOUNTS)}/{zoho_id}")
+        return await self._request("PUT", url, json_body={"data": [payload]})
+
+    async def create_vendor(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a Zoho Vendor."""
+        url = api_url(self._settings.zoho_api_base_url, module_path(MODULE_VENDORS))
+        return await self._request("POST", url, json_body={"data": [payload]})
+
+    async def update_vendor(self, zoho_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing Zoho Vendor by its Zoho id."""
+        url = api_url(self._settings.zoho_api_base_url, f"{module_path(MODULE_VENDORS)}/{zoho_id}")
+        return await self._request("PUT", url, json_body={"data": [payload]})
+
+    async def create_product(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a Zoho Product (Item → Products)."""
+        url = api_url(self._settings.zoho_api_base_url, module_path(MODULE_PRODUCTS))
+        return await self._request("POST", url, json_body={"data": [payload]})
+
+    async def update_product(self, zoho_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing Zoho Product by its Zoho id."""
+        url = api_url(self._settings.zoho_api_base_url, f"{module_path(MODULE_PRODUCTS)}/{zoho_id}")
+        return await self._request("PUT", url, json_body={"data": [payload]})
+
+    async def create_sales_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a Zoho Sales Order."""
+        url = api_url(self._settings.zoho_api_base_url, module_path(MODULE_SALES_ORDERS))
+        return await self._request("POST", url, json_body={"data": [payload]})
+
+    async def update_sales_order(self, zoho_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing Zoho Sales Order by its Zoho id."""
+        path = f"{module_path(MODULE_SALES_ORDERS)}/{zoho_id}"
+        url = api_url(self._settings.zoho_api_base_url, path)
+        return await self._request("PUT", url, json_body={"data": [payload]})
+
+    async def create_purchase_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a Zoho Purchase Order."""
+        url = api_url(self._settings.zoho_api_base_url, module_path(MODULE_PURCHASE_ORDERS))
+        return await self._request("POST", url, json_body={"data": [payload]})
+
+    async def update_purchase_order(self, zoho_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing Zoho Purchase Order by its Zoho id."""
+        path = f"{module_path(MODULE_PURCHASE_ORDERS)}/{zoho_id}"
+        url = api_url(self._settings.zoho_api_base_url, path)
+        return await self._request("PUT", url, json_body={"data": [payload]})
+
+    async def create_lead(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a Zoho Lead (app Lead → Leads module)."""
+        url = api_url(self._settings.zoho_api_base_url, module_path(MODULE_LEADS))
+        return await self._request("POST", url, json_body={"data": [payload]})
+
+    async def update_lead(self, zoho_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing Zoho Lead by its Zoho id."""
+        url = api_url(self._settings.zoho_api_base_url, f"{module_path(MODULE_LEADS)}/{zoho_id}")
+        return await self._request("PUT", url, json_body={"data": [payload]})
+
     async def _get_records(self, module: str) -> list[dict[str, Any]]:
         """Page through a module's records and return them all.
 
@@ -139,6 +208,7 @@ class ZohoClient:
         url: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute a Zoho API request with auth, retry, and error mapping."""
         token = await self._tokens.get_access_token()
@@ -151,7 +221,7 @@ class ZohoClient:
         while True:
             try:
                 response = await self._http.request(
-                    method, url, params=params, headers=self._auth_headers(token)
+                    method, url, params=params, json=json_body, headers=self._auth_headers(token)
                 )
             except httpx.HTTPError as exc:
                 if attempt >= max_attempts:

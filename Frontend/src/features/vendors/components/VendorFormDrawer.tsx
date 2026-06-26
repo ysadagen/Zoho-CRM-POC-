@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Drawer } from '@/components/ui/Drawer';
 import { Field } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
 import { useApiError } from '@/hooks/useApiError';
 import { ApiError } from '@/lib/api/errors';
 import type { Vendor } from '@/types/api.types';
@@ -23,6 +24,8 @@ const FORM_FIELDS = new Set<keyof VendorValues>([
   'phone',
   'vendor_code',
   'gstin',
+  'address',
+  'notes',
 ]);
 
 export interface VendorFormDrawerProps {
@@ -104,6 +107,15 @@ export function VendorFormDrawer({ mode, vendor, onClose, onCreated }: VendorFor
         </Field>
         <Field label="GSTIN / Tax ID" htmlFor="vnd-gstin" error={errors.gstin?.message}>
           <Input id="vnd-gstin" {...register('gstin')} />
+        </Field>
+
+        <div className="divider" />
+        <div className="sect-title">Additional info</div>
+        <Field label="Address" htmlFor="vnd-address" error={errors.address?.message}>
+          <Textarea id="vnd-address" invalid={!!errors.address} rows={3} {...register('address')} />
+        </Field>
+        <Field label="Notes" htmlFor="vnd-notes" error={errors.notes?.message}>
+          <Textarea id="vnd-notes" invalid={!!errors.notes} rows={3} {...register('notes')} />
         </Field>
 
         <div className="drawer-foot">

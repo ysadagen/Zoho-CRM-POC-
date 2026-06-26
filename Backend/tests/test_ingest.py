@@ -44,6 +44,18 @@ def ingest_enabled() -> Iterator[None]:
         settings.zoho_ingest_enabled = original
 
 
+@pytest.fixture
+def ingest_disabled() -> Iterator[None]:
+    """Force ZOHO_INGEST_ENABLED=False regardless of what .env says."""
+    settings = get_settings()
+    original = settings.zoho_ingest_enabled
+    settings.zoho_ingest_enabled = False
+    try:
+        yield
+    finally:
+        settings.zoho_ingest_enabled = original
+
+
 async def _make_user(db_session: AsyncSession, *, email: str) -> User:
     user = User(
         email=email,
@@ -80,9 +92,10 @@ async def test_ingest_requires_internal_api_key(
 
 
 async def test_ingest_disabled_returns_503(
-    client_with_db: AsyncClient, internal_headers: dict[str, str]
+    client_with_db: AsyncClient,
+    internal_headers: dict[str, str],
+    ingest_disabled: None,
 ) -> None:
-    # ingest_enabled fixture deliberately not used → flag is its default (false).
     response = await client_with_db.get("/api/v1/ingest/users", headers=internal_headers)
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "INGEST_DISABLED"

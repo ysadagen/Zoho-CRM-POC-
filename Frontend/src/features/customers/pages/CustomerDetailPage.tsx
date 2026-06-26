@@ -13,16 +13,19 @@ import { ActivityTimeline } from '@/features/activities/components/ActivityTimel
 import { LogActivityModal } from '@/features/activities/components/LogActivityModal';
 import { formatDate } from '@/lib/format';
 import type { Customer } from '@/types/api.types';
+import { CompetitiveRiskLevel, CustomerType } from '@/types/enums';
 
 import { CustomerFormDrawer } from '../components/CustomerFormDrawer';
 import { CustomerSalesOrdersTab } from '../components/CustomerSalesOrdersTab';
+import { CustomerTargetsTab } from '../components/CustomerTargetsTab';
 import { useCustomer, useCustomerSalesOrders } from '../hooks/useCustomers';
 
-type DetailTab = 'profile' | 'orders' | 'activity';
+type DetailTab = 'profile' | 'orders' | 'targets' | 'activity';
 
 const TABS = [
   { value: 'profile', label: 'Profile' },
   { value: 'orders', label: 'Sales orders' },
+  { value: 'targets', label: 'Targets' },
   { value: 'activity', label: 'Activity' },
 ] as const;
 
@@ -35,6 +38,19 @@ function Detail({ label, value, mono }: { label: string; value: string; mono?: b
   );
 }
 
+const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
+  [CustomerType.DEALER]: 'Dealer',
+  [CustomerType.SUB_DEALER]: 'Sub-dealer',
+  [CustomerType.RETAILER]: 'Retailer',
+};
+
+const RISK_LABELS: Record<CompetitiveRiskLevel, string> = {
+  [CompetitiveRiskLevel.NONE]: 'None',
+  [CompetitiveRiskLevel.LOW]: 'Low',
+  [CompetitiveRiskLevel.MEDIUM]: 'Medium',
+  [CompetitiveRiskLevel.HIGH]: 'High',
+};
+
 function Profile({ customer }: { customer: Customer }): JSX.Element {
   return (
     <Card pad>
@@ -45,12 +61,28 @@ function Profile({ customer }: { customer: Customer }): JSX.Element {
         <Detail label="Phone" value={customer.phone ?? '—'} />
         <Detail label="Customer code" value={customer.customer_code ?? '—'} mono />
         <Detail label="GSTIN / Tax ID" value={customer.gstin ?? '—'} mono />
+        <Detail label="Customer type" value={CUSTOMER_TYPE_LABELS[customer.customer_type]} />
+        <Detail label="Competitive risk" value={RISK_LABELS[customer.competitive_risk_level]} />
+      </div>
+      <div className="divider" />
+      <div className="grid-2 gap-24">
+        <Detail label="Address" value={customer.address ?? '—'} />
+        <Detail label="State" value={customer.state ?? '—'} />
+        <Detail label="City" value={customer.city ?? '—'} />
+        <Detail label="District" value={customer.district ?? '—'} />
+        <Detail label="Pincode" value={customer.pincode ?? '—'} />
+      </div>
+      {customer.notes && (
+        <>
+          <div className="divider" />
+          <Detail label="Notes" value={customer.notes} />
+        </>
+      )}
+      <div className="divider" />
+      <div className="grid-2 gap-24">
         <Detail label="Created" value={formatDate(customer.created_at)} />
         <Detail label="Last updated" value={formatDate(customer.updated_at)} />
       </div>
-      {/* Zoho CRM sync is owned by the Integration Layer (a later phase). */}
-      <div className="divider" />
-      <div className="text-muted fs-12">Zoho CRM sync — not connected yet.</div>
     </Card>
   );
 }
@@ -114,6 +146,7 @@ export function CustomerDetailPage(): JSX.Element {
           loading={ordersQuery.isPending}
         />
       )}
+      {tab === 'targets' && <CustomerTargetsTab customerId={id} />}
       {tab === 'activity' && (
         <Card pad>
           <CardHeader

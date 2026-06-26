@@ -272,3 +272,79 @@ async def test_db_rejects_won_stage_without_terminal_fields(
 
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Integration Layer sync wiring
+# ---------------------------------------------------------------------------
+
+
+async def test_create_lead_enqueues_il_sync(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Creating a lead fires sync_lead as a background task (fire-and-forget)."""
+    from unittest.mock import AsyncMock, patch
+
+    user_id, _, _ = await _seed_refs(authenticated_client)
+
+    with patch(
+        "app.clients.integration_layer.IntegrationLayerClient.sync_lead",
+        new_callable=AsyncMock,
+    ) as mock_sync:
+        resp = await authenticated_client.post(
+            LEADS_URL, json=_lead_payload(user_id)
+        )
+
+    assert resp.status_code == 201
+    mock_sync.assert_called_once()
+    call_kwargs = mock_sync.call_args.kwargs
+    assert call_kwargs["contact_name"] == "Ravi Kumar"
+    assert call_kwargs["source"] == "FIELD_VISIT"
+    assert call_kwargs["stage"] == "NEW"
+
+
+async def test_update_lead_enqueues_il_sync(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Patching a lead fires sync_lead as a background task."""
+    from unittest.mock import AsyncMock, patch
+
+    user_id, _, _ = await _seed_refs(authenticated_client)
+    created = await authenticated_client.post(LEADS_URL, json=_lead_payload(user_id))
+    lead_id = created.json()["id"]
+
+    with patch(
+        "app.clients.integration_layer.IntegrationLayerClient.sync_lead",
+        new_callable=AsyncMock,
+    ) as mock_sync:
+        resp = await authenticated_client.patch(
+            _lead_url(lead_id), json={"notes": "Updated note"}
+        )
+
+    assert resp.status_code == 200
+    mock_sync.assert_called_once()
+
+
+async def test_transition_lead_enqueues_il_sync(
+    authenticated_client: AsyncClient,
+) -> None:
+    """Stage transitions fire sync_lead so Zoho Lead_Status stays in sync."""
+    from unittest.mock import AsyncMock, patch
+
+    user_id, _, _ = await _seed_refs(authenticated_client)
+    created = await authenticated_client.post(LEADS_URL, json=_lead_payload(user_id))
+    lead_id = created.json()["id"]
+
+    with patch(
+        "app.clients.integration_layer.IntegrationLayerClient.sync_lead",
+        new_callable=AsyncMock,
+    ) as mock_sync:
+        resp = await authenticated_client.post(
+            f"{_lead_url(lead_id)}/transition",
+            json={"to_stage": "QUALIFICATION"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["stage"] == "QUALIFICATION"
+    mock_sync.assert_called_once()
+    assert mock_sync.call_args.kwargs["stage"] == "QUALIFICATION"

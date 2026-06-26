@@ -54,6 +54,17 @@ def ingest_enabled() -> Iterator[None]:
         settings.zoho_ingest_enabled = original
 
 
+@pytest.fixture
+def ingest_disabled() -> Iterator[None]:
+    settings = get_settings()
+    original = settings.zoho_ingest_enabled
+    settings.zoho_ingest_enabled = False
+    try:
+        yield
+    finally:
+        settings.zoho_ingest_enabled = original
+
+
 async def _build_service(session: AsyncSession, http_client: httpx.AsyncClient) -> IngestService:
     zoho = ZohoClient(_SETTINGS, http_client, _StubTokenProvider())
     backend = BackendClient(_SETTINGS, http_client)
@@ -73,8 +84,7 @@ def _backend_users(mock: respx.MockRouter, users: list[dict[str, Any]]) -> None:
     mock.get(f"{_BACKEND_INGEST}/users").mock(return_value=Response(200, json={"items": users}))
 
 
-async def test_run_is_noop_when_disabled(db_session: AsyncSession) -> None:
-    # ingest_enabled fixture deliberately omitted → flag stays at its default.
+async def test_run_is_noop_when_disabled(db_session: AsyncSession, ingest_disabled: None) -> None:
     async with httpx.AsyncClient() as http_client, respx.mock(assert_all_called=False) as mock:
         service = await _build_service(db_session, http_client)
         summary = await service.run()

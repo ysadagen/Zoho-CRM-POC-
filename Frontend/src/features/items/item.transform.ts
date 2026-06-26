@@ -132,6 +132,7 @@ export function toCreatePayload(values: ItemCreateValues): ItemCreateRequest {
   if (values.description) payload.description = values.description;
   if (values.stock_quantity) payload.stock_quantity = values.stock_quantity;
   if (values.reorder_threshold) payload.reorder_threshold = values.reorder_threshold;
+  if (values.standard_cost) payload.standard_cost = values.standard_cost;
   applyPharma(payload, values, values.type);
   return payload;
 }
@@ -148,6 +149,7 @@ export function toUpdatePayload(values: ItemEditValues, type: ItemType): ItemUpd
   };
   if (values.description) payload.description = values.description;
   if (values.reorder_threshold) payload.reorder_threshold = values.reorder_threshold;
+  if (values.standard_cost) payload.standard_cost = values.standard_cost;
   applyPharma(payload, values, type);
   return payload;
 }
@@ -230,6 +232,7 @@ export function itemToEditValues(item: Item): ItemEditValues {
     unit_of_measure: toFormUnit(item.unit_of_measure),
     reorder_threshold: item.reorder_threshold ?? '',
     unit_price: item.unit_price,
+    standard_cost: item.standard_cost ?? '',
     storage_condition: item.storage_condition ?? '',
     shelf_life_days: item.shelf_life_days != null ? String(item.shelf_life_days) : '',
     // RAW detail (empty for a finished item).

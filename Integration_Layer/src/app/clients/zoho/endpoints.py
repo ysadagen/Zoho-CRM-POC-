@@ -25,6 +25,14 @@ MODULE_EVENTS = "Events"  # Meetings live in the Events module
 MODULE_TASKS = "Tasks"
 MODULE_DEALS = "Deals"
 
+# CRM modules pushed from the app (Track B). A record POST/PUT is
+# ``{ZOHO_API_BASE_URL}/{module}`` or ``{ZOHO_API_BASE_URL}/{module}/{id}``.
+MODULE_ACCOUNTS = "Accounts"
+MODULE_VENDORS = "Vendors"
+MODULE_PRODUCTS = "Products"
+MODULE_SALES_ORDERS = "Sales_Orders"
+MODULE_PURCHASE_ORDERS = "Purchase_Orders"
+
 # Zoho's v8 API requires an explicit ``fields`` query param on every module
 # GET (no default field set, unlike older API versions). Listed here, one
 # place, matching exactly what ``ingest_service.py`` reads off each record
@@ -32,7 +40,9 @@ MODULE_DEALS = "Deals"
 MODULE_FIELDS: dict[str, str] = {
     MODULE_LEADS: (
         "id,Owner,Full_Name,Last_Name,Company,Lead_Source,Lead_Status,"
-        "Created_Time,Phone,Email,State,City,Converted_Deal"
+        "Created_Time,Phone,Email,State,City,Converted_Deal,"
+        "Zip_Code,Converted_Account,Quantity,estimated_budget,"
+        "dealer_potential,required_by_date,District,item_id"
     ),
     MODULE_CALLS: "id,Owner,What_Id,Who_Id,$se_module,Call_Start_Time,Call_Duration_in_seconds",
     MODULE_EVENTS: "id,Owner,What_Id,Who_Id,$se_module,Start_DateTime,End_DateTime,Location",

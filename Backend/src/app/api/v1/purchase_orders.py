@@ -17,9 +17,11 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.integration_layer import IntegrationLayerClient
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.purchase_order import PurchaseOrderStatus
@@ -36,6 +38,30 @@ router = APIRouter(prefix="/purchase-orders", tags=["purchase-orders"])
 
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
+_Settings = Annotated[Settings, Depends(get_settings)]
+
+
+def _enqueue_po_sync(
+    bg: BackgroundTasks, il: IntegrationLayerClient, read: PurchaseOrderRead
+) -> None:
+    bg.add_task(
+        il.sync_purchase_order,
+        id=read.id,
+        po_number=read.po_number,
+        vendor_id=read.vendor_id,
+        order_date=read.order_date.isoformat(),
+        status=read.status.value,
+        notes=read.notes,
+        items=[
+            {
+                "item_id": str(line.item_id),
+                "quantity": str(line.quantity),
+                "unit_price": str(line.unit_price),
+            }
+            for line in read.items
+        ],
+        updated_at=read.updated_at,
+    )
 
 
 @router.post(
@@ -48,6 +74,8 @@ async def create_purchase_order(
     payload: PurchaseOrderCreate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> PurchaseOrderRead:
     """Create a DRAFT PO with its line items.
 
@@ -58,7 +86,9 @@ async def create_purchase_order(
     ``PRICE_UNAVAILABLE`` if both are missing.
     """
     po = await PurchaseOrderService(session).create_po(payload, actor_id=current_user.id)
-    return PurchaseOrderRead.model_validate(po)
+    read = PurchaseOrderRead.model_validate(po)
+    _enqueue_po_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.get(
@@ -127,6 +157,8 @@ async def receive_purchase_order(
     payload: PurchaseOrderReceive,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> PurchaseOrderRead:
     """Receive a PO, recording a lot per line.
 
@@ -144,4 +176,6 @@ async def receive_purchase_order(
     ``DUPLICATE_BATCH`` if a lot number already exists for its item.
     """
     po = await PurchaseOrderService(session).receive_po(po_id, payload, actor_id=current_user.id)
-    return PurchaseOrderRead.model_validate(po)
+    read = PurchaseOrderRead.model_validate(po)
+    _enqueue_po_sync(bg, IntegrationLayerClient(settings), read)
+    return read

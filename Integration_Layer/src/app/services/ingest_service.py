@@ -20,6 +20,7 @@ anything unresolved is parked rather than guessed.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import UTC, date, datetime
 from typing import Any
@@ -358,6 +359,29 @@ def _add_optional_lead_fields(record: dict[str, Any], payload: dict[str, Any]) -
         payload["state"] = str(record["State"])
     if record.get("City"):
         payload["city"] = str(record["City"])
+    if record.get("Zip_Code"):
+        payload["pincode"] = str(record["Zip_Code"])
+    if record.get("District"):
+        payload["district"] = str(record["District"])
+    if record.get("Quantity") is not None:
+        qty = _int_or_none(record["Quantity"])
+        if qty is not None:
+            payload["quantity"] = qty
+    if record.get("estimated_budget") is not None:
+        with contextlib.suppress(TypeError, ValueError):
+            payload["estimated_budget"] = float(record["estimated_budget"])
+    if record.get("dealer_potential"):
+        payload["dealer_potential"] = str(record["dealer_potential"])
+    if record.get("required_by_date"):
+        payload["required_by_date"] = str(record["required_by_date"])
+    # item_id is a Lookup field — Zoho returns {"id": "...", "name": "..."}.
+    item_ref = record.get("item_id")
+    if isinstance(item_ref, dict) and item_ref.get("id"):
+        payload["item_id"] = str(item_ref["id"])
+    # Converted_Account links a converted lead to its app Customer record.
+    account_ref = record.get("Converted_Account")
+    if isinstance(account_ref, dict) and account_ref.get("id"):
+        payload["customer_id"] = str(account_ref["id"])
 
 
 def _converted_deal_id(record: dict[str, Any]) -> str | None:

@@ -30,6 +30,36 @@ class CrmMappingRepository:
         )
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
+    async def get_by_local_id(
+        self, entity_type: MappingEntityType, local_id: str
+    ) -> CrmMapping | None:
+        """Resolve a local id → mapping (the push dedup lookup)."""
+        stmt = select(CrmMapping).where(
+            CrmMapping.entity_type == entity_type,
+            CrmMapping.local_id == local_id,
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def upsert_by_local_id(
+        self,
+        *,
+        entity_type: MappingEntityType,
+        local_id: str,
+        zoho_id: str,
+    ) -> CrmMapping:
+        """Create or update the mapping for ``(entity_type, local_id)``.
+
+        Used by Track B push to record the Zoho id after a successful create/update.
+        """
+        mapping = await self.get_by_local_id(entity_type, local_id)
+        if mapping is None:
+            mapping = CrmMapping(entity_type=entity_type, local_id=local_id, zoho_id=zoho_id)
+            self._session.add(mapping)
+        else:
+            mapping.zoho_id = zoho_id
+        await self._session.flush()
+        return mapping
+
     async def upsert(
         self,
         *,

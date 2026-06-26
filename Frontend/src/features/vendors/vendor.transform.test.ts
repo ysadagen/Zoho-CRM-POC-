@@ -21,6 +21,8 @@ function vendor(overrides: Partial<Vendor> = {}): Vendor {
     vendor_code: 'STL-1',
     gstin: 'GST9',
     is_active: true,
+    address: null,
+    notes: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
