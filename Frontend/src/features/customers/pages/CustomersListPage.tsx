@@ -47,7 +47,7 @@ export function CustomersListPage(): JSX.Element {
     <>
       <PageHeader
         title="Customers"
-        sub="Who you sell to — relationship history lives in Zoho CRM"
+        sub="Who you sell to: Relationship history lives in Zoho CRM"
         actions={
           <Button variant="pri" icon="plus" onClick={() => setCreateOpen(true)}>
             Add Customer

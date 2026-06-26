@@ -1218,6 +1218,66 @@ per §5.6 — left for a focused forms pass if desired.
 
 ---
 
+## Phase 13 — Global search palette + dashboard intel-card fix (2026-06-26)
+
+**Spec.** Turn the Topbar's "coming soon" search placeholder into a working
+global command palette across Customers, Items, and Vendors; and fix the
+dashboard *Sales intelligence* KPI cards whose labels were being clipped by the
+icon badge.
+
+**Dashboard fix.** `IntelligenceSummary` rendered its two `KpiCard`s in a
+`flex gap-12` that shrank each card to its label width, so `KpiCard`'s
+absolutely-positioned icon badge overlapped the label end ("Hot l", "At-risk
+custo"). Switched the container to the dashboard's own wide-card grid
+(`kpi-row kpi-2`) and added `.kpi-row.kpi-2 { grid-template-columns: repeat(2,
+1fr); }`. No change to the 5-column main KPI row. Regression test added in
+`IntelligenceSummary.test.tsx`.
+
+**Search palette.** New self-contained slice `features/search/`:
+- `search.api.ts` — `runSearch(query)` fans out in parallel to the existing
+  `listCustomers/listItems/listVendors` (`?search=`, 5 each) and maps each into
+  a `SearchGroup`. Each source is **failure-isolated**: an error marks only its
+  own group `failed` and is logged via `logger.error('search.source_failed', …)`
+  with the request id — **never the raw query** (it can contain customer PII).
+- `useGlobalSearch.ts` — debounces 250 ms (`useDebounce`), stays idle until the
+  trimmed query reaches `MIN_QUERY_LENGTH` (2), then React-Query fan-out.
+- `SearchPalette.tsx` — overlay dialog; ↑/↓ move the highlight across the flat
+  result list, Enter opens, Esc / backdrop close; idle / loading / empty /
+  error states; navigates to `/{entity}/:id`.
+- `GlobalSearch.tsx` — the Topbar trigger + open-state + global ⌘K / Ctrl+K.
+
+**Decisions / flagged deviations (per CLAUDE.md §14.9):**
+- *Cross-feature `*.api.ts` reuse* — search imports the three domains' list
+  functions. Consistent with the dashboard's documented stance that importing
+  other features' `*.api.ts` is intentional.
+- *`components/layout/Topbar` imports `features/search`* — a layout→feature
+  edge. Accepted: the global search affordance is chrome, and the alternative
+  (a search context provider + split trigger) is more speculative infra than
+  §11 wants. Flagged here rather than bent quietly.
+
+**Files:** `features/search/{search.types.ts, api/search.api.ts(+test),
+hooks/useGlobalSearch.ts, components/SearchPalette.tsx, GlobalSearch.tsx(+test)}`;
+edited `components/layout/Topbar.tsx`, `features/dashboard/components/
+IntelligenceSummary.tsx(+test)`, `styles/globals.css`.
+
+### How to test (you)
+
+```powershell
+cd Frontend
+npm run lint            # clean
+npm run build           # tsc + vite, clean (pre-existing >500 kB chunk warning only)
+npm run test            # 385 passed (was 375): +7 GlobalSearch, +2 search.api, +1 IntelligenceSummary
+npm run test:coverage   # global ~92.5% (>= 80), lib >= 95 — thresholds hold
+npm run dev             # then: press Ctrl/Cmd+K (or click the Topbar search),
+                        #   type >=2 chars -> grouped Customers/Items/Vendors results;
+                        #   arrow keys + Enter (or click) navigate to the record; Esc closes.
+                        #   Dashboard: Sales-intelligence cards show full labels.
+```
+
+The Backend (`:8000`) must be running for live results.
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.

@@ -22,7 +22,7 @@ export function TeamPerformancePage(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Team Performance" sub="Effort vs efficiency — who's converting" />
+      <PageHeader title="Team Performance" sub="Effort vs efficiency: Who's converting" />
 
       {query.isError && !query.data ? (
         <PageError error={query.error} onRetry={() => void query.refetch()} />

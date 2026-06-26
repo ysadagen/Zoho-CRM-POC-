@@ -33,7 +33,7 @@ export function CustomerHealthPage(): JSX.Element {
     <>
       <PageHeader
         title="Customer Health"
-        sub="Who's healthy vs at churn risk — computed live"
+        sub="Who's healthy vs at churn risk: Computed Live"
       />
 
       {query.isError && !query.data ? (

@@ -18,7 +18,7 @@ export function CrmSyncCard(): JSX.Element {
     triggerIngest()
       .then((result) => {
         if (result.ok) {
-          toast.success('Zoho sync triggered — the Integration Layer is pulling records.');
+          toast.success('Zoho Sync Triggered: the Integration Layer is pulling records.');
         } else {
           toast.warn('Sync request sent, but the Integration Layer returned a non-OK status.');
         }

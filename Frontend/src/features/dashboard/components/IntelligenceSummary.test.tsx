@@ -60,4 +60,23 @@ describe('IntelligenceSummary', () => {
     expect(await screen.findByText('Negotiation')).toBeInTheDocument();
     expect(screen.getByText('New')).toBeInTheDocument();
   });
+
+  it('lays the two KPI cards in a 2-column grid so the icon badge cannot clip the label', async () => {
+    server.use(...handlers());
+    const { container } = renderWithProviders(<IntelligenceSummary />);
+    await screen.findByText('7');
+
+    // Both cards must live inside a `.kpi-row` grid (the dashboard's wide-card
+    // pattern), NOT a shrink-to-content flex — otherwise KpiCard's absolutely
+    // positioned icon badge overlaps the end of the label ("Hot l", "At-risk
+    // custo"). Regression guard for the dashboard truncation bug.
+    const row = container.querySelector('.kpi-row');
+    expect(row).not.toBeNull();
+    expect(row?.className).toContain('kpi-2');
+
+    const kpis = row?.querySelectorAll('.kpi') ?? [];
+    expect(kpis).toHaveLength(2);
+    expect(screen.getByText('Hot leads')).toBeInTheDocument();
+    expect(screen.getByText('At-risk customers')).toBeInTheDocument();
+  });
 });

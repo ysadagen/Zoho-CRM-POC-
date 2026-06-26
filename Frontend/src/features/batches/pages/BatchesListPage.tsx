@@ -73,7 +73,7 @@ export function BatchesListPage(): JSX.Element {
     <>
       <PageHeader
         title="Batches"
-        sub="Lots in stock — expiry, QC status and traceability"
+        sub="Lots in stock:  expiry, QC status and traceability"
         actions={
           <Button variant="pri" icon="plus" onClick={() => setCreateOpen(true)}>
             New Lot

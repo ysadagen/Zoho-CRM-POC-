@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { routes } from '@/app/routes';
 import { useAuth } from '@/auth/useAuth';
 import { Icon } from '@/components/ui/Icon';
+import { GlobalSearch } from '@/features/search/components/GlobalSearch';
 
 import { navItemForPath } from './navItems';
 
@@ -33,13 +34,7 @@ export function Topbar(): JSX.Element {
         <span className="now">{crumb}</span>
       </div>
 
-      <div className="search-wrap">
-        <div className="search disabled" title="Phase 2 — coming soon">
-          <Icon name="search" />
-          <span className="placeholder">Search (coming soon)</span>
-          <span className="kbd">⌘K</span>
-        </div>
-      </div>
+      <GlobalSearch />
 
       <div className="topbar-actions">
         <button className="iconbtn" type="button" title="Help" aria-label="Help">

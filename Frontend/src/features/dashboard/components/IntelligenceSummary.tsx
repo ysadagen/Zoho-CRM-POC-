@@ -55,7 +55,7 @@ export function IntelligenceSummary(): JSX.Element {
   return (
     <Card pad>
       <CardHeader title="Sales intelligence" sub="Live AI signals" />
-      <div className="flex gap-12 mt-8">
+      <div className="kpi-row kpi-2 mt-8">
         <KpiCard
           tone="danger"
           icon="bell"
