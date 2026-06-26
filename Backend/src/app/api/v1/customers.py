@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.integration_layer import IntegrationLayerClient
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user, require_admin
 from app.models.user import User
@@ -19,6 +21,26 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
 _AdminUser = Annotated[User, Depends(require_admin)]
+_Settings = Annotated[Settings, Depends(get_settings)]
+
+
+def _enqueue_customer_sync(
+    bg: BackgroundTasks, il: IntegrationLayerClient, read: CustomerRead
+) -> None:
+    bg.add_task(
+        il.sync_customer,
+        id=read.id,
+        company_name=read.company_name,
+        email=str(read.email) if read.email else None,
+        phone=read.phone,
+        address=read.address,
+        gstin=read.gstin,
+        customer_code=read.customer_code,
+        is_privileged=read.is_privileged,
+        competitive_risk_level=read.competitive_risk_level.value,
+        notes=read.notes,
+        updated_at=read.updated_at,
+    )
 
 
 @router.post(
@@ -31,10 +53,14 @@ async def create_customer(
     payload: CustomerCreate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> CustomerRead:
     """Create a customer. Returns 409 if ``customer_code`` or ``gstin`` is taken."""
     customer = await CustomerService(session).create(payload, actor_id=current_user.id)
-    return CustomerRead.model_validate(customer)
+    read = CustomerRead.model_validate(customer)
+    _enqueue_customer_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.get(
@@ -97,10 +123,14 @@ async def update_customer(
     payload: CustomerUpdate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> CustomerRead:
     """Apply a partial update. Returns 409 on uniqueness conflicts."""
     customer = await CustomerService(session).update(customer_id, payload, actor_id=current_user.id)
-    return CustomerRead.model_validate(customer)
+    read = CustomerRead.model_validate(customer)
+    _enqueue_customer_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.delete(

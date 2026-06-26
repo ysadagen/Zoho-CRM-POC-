@@ -43,6 +43,7 @@ const EMPTY_CREATE: ItemCreateValues = {
   unit_of_measure: 'kg',
   reorder_threshold: '',
   unit_price: '',
+  standard_cost: '',
   storage_condition: '',
   shelf_life_days: '',
   // RAW detail
@@ -76,6 +77,7 @@ const FORM_FIELDS = new Set<keyof ItemCreateValues>([
   'unit_of_measure',
   'reorder_threshold',
   'unit_price',
+  'standard_cost',
   'storage_condition',
   'shelf_life_days',
 ]);
@@ -277,6 +279,7 @@ export function ItemFormDrawer({ mode, item, onClose, onCreated }: ItemFormDrawe
             hint: 'Low-stock alert',
           })}
           {textField('unit_price', 'Unit price', { type: 'number' })}
+          {textField('standard_cost', 'Standard cost', { type: 'number', hint: 'Internal cost basis' })}
         </div>
 
         <div className="divider" />

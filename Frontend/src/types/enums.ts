@@ -163,6 +163,25 @@ export const EffortQuadrant = {
 export type EffortQuadrant = (typeof EffortQuadrant)[keyof typeof EffortQuadrant];
 
 /* ============================================================
+ *  Customer classification enums (Backend — customers)
+ * ============================================================ */
+
+export const CustomerType = {
+  DEALER: 'DEALER',
+  SUB_DEALER: 'SUB_DEALER',
+  RETAILER: 'RETAILER',
+} as const;
+export type CustomerType = (typeof CustomerType)[keyof typeof CustomerType];
+
+export const CompetitiveRiskLevel = {
+  NONE: 'NONE',
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+} as const;
+export type CompetitiveRiskLevel = (typeof CompetitiveRiskLevel)[keyof typeof CompetitiveRiskLevel];
+
+/* ============================================================
  *  Lead + activity enums (Backend 2A — leads/activities live on the Backend)
  * ============================================================ */
 

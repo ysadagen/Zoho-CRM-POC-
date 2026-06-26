@@ -6,9 +6,12 @@ import { Button } from '@/components/ui/Button';
 import { Drawer } from '@/components/ui/Drawer';
 import { Field } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Textarea } from '@/components/ui/Textarea';
 import { useApiError } from '@/hooks/useApiError';
 import { ApiError } from '@/lib/api/errors';
 import type { Customer } from '@/types/api.types';
+import { CompetitiveRiskLevel, CustomerType } from '@/types/enums';
 
 import { useCreateCustomer, useUpdateCustomer } from '../hooks/useCustomers';
 import { EMPTY_CUSTOMER, customerSchema, type CustomerValues } from '../customer.schema';
@@ -23,6 +26,14 @@ const FORM_FIELDS = new Set<keyof CustomerValues>([
   'phone',
   'customer_code',
   'gstin',
+  'customer_type',
+  'competitive_risk_level',
+  'address',
+  'state',
+  'city',
+  'district',
+  'pincode',
+  'notes',
 ]);
 
 export interface CustomerFormDrawerProps {
@@ -108,12 +119,55 @@ export function CustomerFormDrawer({
           <Input id="cust-code" {...register('customer_code')} />
         </Field>
         <Field label="GSTIN / Tax ID" htmlFor="cust-gstin" error={errors.gstin?.message}>
-          <Input id="cust-gstin" {...register('gstin')} />
+          <Input id="cust-gstin" invalid={!!errors.gstin} {...register('gstin')} />
         </Field>
         <label className="check-row">
           <input type="checkbox" {...register('is_privileged')} />
           Privileged customer
         </label>
+
+        <div className="divider" />
+        <div className="sect-title">Location</div>
+        <Field label="Address" htmlFor="cust-address" error={errors.address?.message}>
+          <Textarea id="cust-address" invalid={!!errors.address} rows={3} {...register('address')} />
+        </Field>
+        <div className="form-grid">
+          <Field label="State" htmlFor="cust-state" error={errors.state?.message}>
+            <Input id="cust-state" {...register('state')} />
+          </Field>
+          <Field label="City" htmlFor="cust-city" error={errors.city?.message}>
+            <Input id="cust-city" {...register('city')} />
+          </Field>
+          <Field label="District" htmlFor="cust-district" error={errors.district?.message}>
+            <Input id="cust-district" {...register('district')} />
+          </Field>
+          <Field label="Pincode" htmlFor="cust-pincode" error={errors.pincode?.message}>
+            <Input id="cust-pincode" {...register('pincode')} />
+          </Field>
+        </div>
+
+        <div className="divider" />
+        <div className="sect-title">Classification</div>
+        <div className="form-grid">
+          <Field label="Customer type" htmlFor="cust-type" error={errors.customer_type?.message}>
+            <Select id="cust-type" invalid={!!errors.customer_type} {...register('customer_type')}>
+              <option value={CustomerType.DEALER}>Dealer</option>
+              <option value={CustomerType.SUB_DEALER}>Sub-dealer</option>
+              <option value={CustomerType.RETAILER}>Retailer</option>
+            </Select>
+          </Field>
+          <Field label="Competitive risk" htmlFor="cust-risk" error={errors.competitive_risk_level?.message}>
+            <Select id="cust-risk" invalid={!!errors.competitive_risk_level} {...register('competitive_risk_level')}>
+              <option value={CompetitiveRiskLevel.NONE}>None</option>
+              <option value={CompetitiveRiskLevel.LOW}>Low</option>
+              <option value={CompetitiveRiskLevel.MEDIUM}>Medium</option>
+              <option value={CompetitiveRiskLevel.HIGH}>High</option>
+            </Select>
+          </Field>
+        </div>
+        <Field label="Notes" htmlFor="cust-notes" error={errors.notes?.message}>
+          <Textarea id="cust-notes" invalid={!!errors.notes} rows={3} {...register('notes')} />
+        </Field>
 
         <div className="drawer-foot">
           <Button variant="sec" onClick={onClose}>

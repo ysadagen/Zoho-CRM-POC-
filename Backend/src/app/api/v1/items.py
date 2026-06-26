@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.integration_layer import IntegrationLayerClient
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.item import ItemType
@@ -20,6 +22,7 @@ router = APIRouter(prefix="/items", tags=["items"])
 # Reused dependency aliases — Annotated[...] gets verbose at every signature.
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
+_Settings = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post(
@@ -32,6 +35,8 @@ async def create_item(
     payload: ItemCreate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> ItemCreated:
     """Create an item. Returns 409 if the SKU is already taken.
 
@@ -42,6 +47,19 @@ async def create_item(
     See ``ItemCreated`` docstring for the rationale.
     """
     item = await ItemService(session).create(payload, actor_id=current_user.id)
+    full = ItemRead.model_validate(item)
+    il = IntegrationLayerClient(settings)
+    bg.add_task(
+        il.sync_item,
+        id=full.id,
+        name=full.name,
+        sku=full.sku,
+        item_type=full.type.value,
+        unit_of_measure=full.unit_of_measure,
+        unit_price=full.unit_price,
+        reorder_threshold=full.reorder_threshold,
+        updated_at=full.updated_at,
+    )
     return ItemCreated.model_validate(item)
 
 
@@ -113,6 +131,8 @@ async def update_item(
     payload: ItemUpdate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> ItemRead:
     """Apply a partial update.
 
@@ -121,7 +141,20 @@ async def update_item(
     Stock changes will move to the stock-movement ledger in Phase 6.
     """
     item = await ItemService(session).update(item_id, payload, actor_id=current_user.id)
-    return ItemRead.model_validate(item)
+    read = ItemRead.model_validate(item)
+    il = IntegrationLayerClient(settings)
+    bg.add_task(
+        il.sync_item,
+        id=read.id,
+        name=read.name,
+        sku=read.sku,
+        item_type=read.type.value,
+        unit_of_measure=read.unit_of_measure,
+        unit_price=read.unit_price,
+        reorder_threshold=read.reorder_threshold,
+        updated_at=read.updated_at,
+    )
+    return read
 
 
 @router.delete(

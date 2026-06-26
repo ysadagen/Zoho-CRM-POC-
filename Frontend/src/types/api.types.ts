@@ -11,6 +11,8 @@
 import type {
   ActivityType,
   BatchStatus,
+  CompetitiveRiskLevel,
+  CustomerType,
   DealerPotential,
   DosageForm,
   DrugSchedule,
@@ -128,6 +130,7 @@ export interface Item {
   stock_quantity: string;
   reorder_threshold: string | null;
   unit_price: string;
+  standard_cost: string | null;
   storage_condition: StorageCondition | null;
   shelf_life_days: number | null;
   status: ItemStatus;
@@ -153,6 +156,7 @@ export interface ItemCreateRequest {
   stock_quantity?: string;
   reorder_threshold?: string;
   unit_price: string;
+  standard_cost?: string;
   storage_condition?: StorageCondition;
   shelf_life_days?: number;
   raw_detail?: RawItemDetailInput;
@@ -166,6 +170,7 @@ export interface ItemUpdateRequest {
   unit_of_measure?: string;
   reorder_threshold?: string;
   unit_price?: string;
+  standard_cost?: string;
   storage_condition?: StorageCondition;
   shelf_life_days?: number;
   raw_detail?: RawItemDetailInput;
@@ -187,6 +192,14 @@ export interface Customer {
   gstin: string | null;
   is_privileged: boolean;
   is_active: boolean;
+  address: string | null;
+  state: string | null;
+  city: string | null;
+  district: string | null;
+  pincode: string | null;
+  notes: string | null;
+  customer_type: CustomerType;
+  competitive_risk_level: CompetitiveRiskLevel;
   created_at: string;
   updated_at: string;
 }
@@ -199,11 +212,44 @@ export interface CustomerCreateRequest {
   customer_code?: string;
   gstin?: string;
   is_privileged?: boolean;
+  address?: string;
+  state?: string;
+  city?: string;
+  district?: string;
+  pincode?: string;
+  notes?: string;
+  customer_type?: CustomerType;
+  competitive_risk_level?: CompetitiveRiskLevel;
 }
 
 export type CustomerUpdateRequest = Partial<CustomerCreateRequest> & {
   is_active?: boolean;
 };
+
+export interface CustomerTarget {
+  id: string;
+  customer_id: string;
+  period_start: string;
+  period_end: string;
+  target_quantity: string;
+  target_revenue: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerTargetCreateRequest {
+  period_start: string;
+  period_end: string;
+  target_quantity: string;
+  target_revenue?: string;
+}
+
+export interface CustomerTargetUpdateRequest {
+  period_start?: string;
+  period_end?: string;
+  target_quantity?: string;
+  target_revenue?: string;
+}
 
 /* ============================================================
  *  Vendors
@@ -218,6 +264,8 @@ export interface Vendor {
   vendor_code: string | null;
   gstin: string | null;
   is_active: boolean;
+  address: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -229,6 +277,8 @@ export interface VendorCreateRequest {
   phone?: string;
   vendor_code?: string;
   gstin?: string;
+  address?: string;
+  notes?: string;
 }
 
 export type VendorUpdateRequest = Partial<VendorCreateRequest> & {

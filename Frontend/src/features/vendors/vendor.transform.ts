@@ -15,6 +15,8 @@ export function toVendorPayload(values: VendorValues): VendorCreateRequest {
   if (values.phone) payload.phone = values.phone;
   if (values.vendor_code) payload.vendor_code = values.vendor_code;
   if (values.gstin) payload.gstin = values.gstin;
+  if (values.address) payload.address = values.address;
+  if (values.notes) payload.notes = values.notes;
   return payload;
 }
 
@@ -26,6 +28,8 @@ export function vendorToFormValues(vendor: Vendor): VendorValues {
     phone: vendor.phone ?? '',
     vendor_code: vendor.vendor_code ?? '',
     gstin: vendor.gstin ?? '',
+    address: vendor.address ?? '',
+    notes: vendor.notes ?? '',
   };
 }
 

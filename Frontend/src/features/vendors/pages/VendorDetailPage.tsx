@@ -46,6 +46,22 @@ function Profile({ vendor }: { vendor: Vendor }): JSX.Element {
         <Detail label="Created" value={formatDate(vendor.created_at)} />
         <Detail label="Last updated" value={formatDate(vendor.updated_at)} />
       </div>
+      {vendor.address && (
+        <>
+          <div className="divider" />
+          <div className="grid-2 gap-24">
+            <Detail label="Address" value={vendor.address} />
+          </div>
+        </>
+      )}
+      {vendor.notes && (
+        <>
+          <div className="divider" />
+          <div className="grid-2 gap-24">
+            <Detail label="Notes" value={vendor.notes} />
+          </div>
+        </>
+      )}
     </Card>
   );
 }

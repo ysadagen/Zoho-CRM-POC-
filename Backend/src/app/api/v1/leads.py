@@ -11,9 +11,11 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.integration_layer import IntegrationLayerClient
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.lead import LeadSource, LeadStage
@@ -33,6 +35,26 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
+_Settings = Annotated[Settings, Depends(get_settings)]
+
+
+def _enqueue_lead_sync(
+    bg: BackgroundTasks, il: IntegrationLayerClient, read: LeadRead
+) -> None:
+    bg.add_task(
+        il.sync_lead,
+        id=read.id,
+        contact_name=read.contact_name,
+        source=read.source.value,
+        stage=read.stage.value,
+        phone=read.phone,
+        email=str(read.email) if read.email else None,
+        state=read.state,
+        city=read.city,
+        notes=read.notes,
+        estimated_budget=read.estimated_budget,
+        updated_at=read.updated_at,
+    )
 
 
 @router.post(
@@ -45,13 +67,17 @@ async def create_lead(
     payload: LeadCreate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> LeadRead:
     """Create a lead (always at stage NEW) and record its creation in the
     stage history. Returns 404 if the assigned user, customer, or item
     does not exist.
     """
     lead = await LeadService(session).create(payload, actor_id=current_user.id)
-    return LeadRead.model_validate(lead)
+    read = LeadRead.model_validate(lead)
+    _enqueue_lead_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.get(
@@ -130,11 +156,15 @@ async def update_lead(
     payload: LeadUpdate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> LeadRead:
     """Apply a partial update. ``stage`` is not a field — use the transition
     endpoint. 404 if the lead or any referenced entity does not exist."""
     lead = await LeadService(session).update(lead_id, payload, actor_id=current_user.id)
-    return LeadRead.model_validate(lead)
+    read = LeadRead.model_validate(lead)
+    _enqueue_lead_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.post(
@@ -147,6 +177,8 @@ async def transition_lead(
     payload: StageTransitionRequest,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> LeadRead:
     """Transition a lead's stage along the legal state machine.
 
@@ -154,7 +186,9 @@ async def transition_lead(
     422 if WON is missing ``won_value`` or LOST is missing ``lost_reason``.
     """
     lead = await LeadService(session).transition(lead_id, payload, actor_id=current_user.id)
-    return LeadRead.model_validate(lead)
+    read = LeadRead.model_validate(lead)
+    _enqueue_lead_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.delete(

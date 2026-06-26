@@ -23,9 +23,17 @@ const EXISTING: Customer = {
   email: 'ops@acme.test',
   phone: '123',
   customer_code: 'ACME-1',
-  gstin: 'GST123',
+  gstin: null,
   is_privileged: false,
   is_active: true,
+  address: null,
+  state: null,
+  city: null,
+  district: null,
+  pincode: null,
+  notes: null,
+  customer_type: 'RETAILER',
+  competitive_risk_level: 'NONE',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 };
@@ -48,7 +56,7 @@ describe('CustomerFormDrawer', () => {
     await user.click(screen.getByRole('button', { name: 'Add customer' }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('new-1'));
-    expect(body).toEqual({ company_name: 'Globex', is_privileged: false });
+    expect(body).toMatchObject({ company_name: 'Globex', is_privileged: false });
     expect(await screen.findByText('Globex added.')).toBeInTheDocument();
   });
 

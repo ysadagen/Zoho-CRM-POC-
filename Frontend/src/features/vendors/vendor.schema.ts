@@ -8,6 +8,8 @@ export const vendorSchema = z.object({
   phone: z.string().trim(),
   vendor_code: z.string().trim(),
   gstin: z.string().trim(),
+  address: z.string().trim().max(2000, 'Keep under 2000 characters'),
+  notes: z.string().trim().max(2000, 'Keep under 2000 characters'),
 });
 
 export type VendorValues = z.infer<typeof vendorSchema>;
@@ -19,6 +21,8 @@ export const EMPTY_VENDOR: VendorValues = {
   phone: '',
   vendor_code: '',
   gstin: '',
+  address: '',
+  notes: '',
 };
 
 const DECIMAL_RE = /^\d+(\.\d+)?$/;

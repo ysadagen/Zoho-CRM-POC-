@@ -34,6 +34,7 @@ const EXISTING: Item = {
   stock_quantity: '500',
   reorder_threshold: '100',
   unit_price: '45',
+  standard_cost: null,
   storage_condition: null,
   shelf_life_days: null,
   raw_detail: null,

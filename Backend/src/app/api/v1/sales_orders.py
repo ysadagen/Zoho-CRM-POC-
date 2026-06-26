@@ -17,9 +17,11 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.integration_layer import IntegrationLayerClient
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.sales_order import SalesOrderStatus
@@ -35,6 +37,28 @@ router = APIRouter(prefix="/sales-orders", tags=["sales-orders"])
 
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
+_Settings = Annotated[Settings, Depends(get_settings)]
+
+
+def _enqueue_so_sync(bg: BackgroundTasks, il: IntegrationLayerClient, read: SalesOrderRead) -> None:
+    bg.add_task(
+        il.sync_sales_order,
+        id=read.id,
+        so_number=read.so_number,
+        customer_id=read.customer_id,
+        order_date=read.order_date.isoformat(),
+        status=read.status.value,
+        notes=read.notes,
+        items=[
+            {
+                "item_id": str(line.item_id),
+                "quantity": str(line.quantity),
+                "unit_price": str(line.unit_price),
+            }
+            for line in read.items
+        ],
+        updated_at=read.updated_at,
+    )
 
 
 @router.post(
@@ -47,6 +71,8 @@ async def create_sales_order(
     payload: SalesOrderCreate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> SalesOrderRead:
     """Create a DRAFT SO with its line items.
 
@@ -57,7 +83,9 @@ async def create_sales_order(
     that's enforced at ``/ship``.
     """
     so = await SalesOrderService(session).create_so(payload, actor_id=current_user.id)
-    return SalesOrderRead.model_validate(so)
+    read = SalesOrderRead.model_validate(so)
+    _enqueue_so_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.get(
@@ -125,6 +153,8 @@ async def ship_sales_order(
     so_id: uuid.UUID,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> SalesOrderRead:
     """Ship an SO.
 
@@ -141,4 +171,6 @@ async def ship_sales_order(
       zero. Entire ship is rolled back (no partial stock or ledger).
     """
     so = await SalesOrderService(session).ship_so(so_id, actor_id=current_user.id)
-    return SalesOrderRead.model_validate(so)
+    read = SalesOrderRead.model_validate(so)
+    _enqueue_so_sync(bg, IntegrationLayerClient(settings), read)
+    return read

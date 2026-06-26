@@ -85,6 +85,7 @@ const editableFields = {
   unit_of_measure: z.enum(ITEM_UNITS, { message: 'Pick a unit' }),
   reorder_threshold: optionalDecimal('Reorder threshold'),
   unit_price: requiredDecimal('Unit price'),
+  standard_cost: optionalDecimal('Standard cost'),
   ...commonPharmaFields,
   ...rawDetailFields,
   ...finishedDetailFields,

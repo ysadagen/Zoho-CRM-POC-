@@ -48,6 +48,7 @@ function item(overrides: Partial<Item> = {}): Item {
     stock_quantity: '100',
     reorder_threshold: '20',
     unit_price: '45',
+    standard_cost: null,
     storage_condition: null,
     shelf_life_days: null,
     raw_detail: null,

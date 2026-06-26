@@ -5,4 +5,5 @@ export const customerKeys = {
   list: (params: ListCustomersParams) => ['customers', 'list', params] as const,
   detail: (id: string) => ['customers', 'detail', id] as const,
   salesOrders: (id: string) => ['customers', 'sales-orders', id] as const,
+  targets: (id: string) => [...(['customers'] as const), 'targets', id] as const,
 };

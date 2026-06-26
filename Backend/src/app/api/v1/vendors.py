@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.integration_layer import IntegrationLayerClient
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user, require_admin
 from app.models.user import User
@@ -19,6 +21,23 @@ router = APIRouter(prefix="/vendors", tags=["vendors"])
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
 _AdminUser = Annotated[User, Depends(require_admin)]
+_Settings = Annotated[Settings, Depends(get_settings)]
+
+
+def _enqueue_vendor_sync(
+    bg: BackgroundTasks, il: IntegrationLayerClient, read: VendorRead
+) -> None:
+    bg.add_task(
+        il.sync_vendor,
+        id=read.id,
+        vendor_name=read.vendor_name,
+        email=str(read.email) if read.email else None,
+        phone=read.phone,
+        address=read.address,
+        gstin=read.gstin,
+        notes=read.notes,
+        updated_at=read.updated_at,
+    )
 
 
 @router.post(
@@ -31,10 +50,14 @@ async def create_vendor(
     payload: VendorCreate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> VendorRead:
     """Create a vendor. Returns 409 if ``vendor_code`` or ``gstin`` is taken."""
     vendor = await VendorService(session).create(payload, actor_id=current_user.id)
-    return VendorRead.model_validate(vendor)
+    read = VendorRead.model_validate(vendor)
+    _enqueue_vendor_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.get(
@@ -94,10 +117,14 @@ async def update_vendor(
     payload: VendorUpdate,
     session: _Session,
     current_user: _CurrentUser,
+    bg: BackgroundTasks,
+    settings: _Settings,
 ) -> VendorRead:
     """Apply a partial update. Returns 409 on uniqueness conflicts."""
     vendor = await VendorService(session).update(vendor_id, payload, actor_id=current_user.id)
-    return VendorRead.model_validate(vendor)
+    read = VendorRead.model_validate(vendor)
+    _enqueue_vendor_sync(bg, IntegrationLayerClient(settings), read)
+    return read
 
 
 @router.delete(
