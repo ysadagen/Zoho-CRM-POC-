@@ -26,11 +26,17 @@ class CustomerSyncRequest(BaseModel):
 
     id: uuid.UUID
     company_name: str
+    contact_person: str | None = None
     email: str | None = None
     phone: str | None = None
     address: str | None = None
+    state: str | None = None
+    district: str | None = None
+    city: str | None = None
+    pincode: str | None = None
     gstin: str | None = None
     customer_code: str | None = None
+    customer_type: str = "RETAILER"
     is_privileged: bool = False
     competitive_risk_level: str = "NONE"
     notes: str | None = None
@@ -45,6 +51,8 @@ class VendorSyncRequest(BaseModel):
 
     id: uuid.UUID
     vendor_name: str
+    contact_person: str | None = None
+    vendor_code: str | None = None
     email: str | None = None
     phone: str | None = None
     address: str | None = None
@@ -85,6 +93,7 @@ class SalesOrderSyncRequest(BaseModel):
     so_number: str
     customer_id: uuid.UUID
     order_date: date
+    expected_delivery_date: date | None = None
     status: str  # DRAFT | SHIPPED
     notes: str | None = None
     items: list[SalesOrderLineItemRequest] = []
@@ -126,6 +135,12 @@ class LeadSyncRequest(BaseModel):
     phone: str | None = None
     email: str | None = None
     state: str | None = None
+    district: str | None = None
     city: str | None = None
+    pincode: str | None = None
     notes: str | None = None
     estimated_budget: Decimal | None = None
+    quantity: int | None = None
+    item_id: uuid.UUID | None = None
+    dealer_potential: str | None = None
+    required_by_date: date | None = None

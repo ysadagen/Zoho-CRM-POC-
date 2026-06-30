@@ -4,7 +4,7 @@ Two groups share one ``Base.metadata``:
 
 * **Read models** for the Backend-owned CRM tables this service consumes
   (``users``, ``customers``, ``items``, ``leads``, ``sales_orders`` (+ items),
-  ``sales_activities``, ``invoices`` (+ ``payments``), ``customer_targets``).
+  ``sales_activities``, ``customer_targets``).
   In production these tables already exist (the Backend owns them); this
   service only SELECTs from them. In the test schema they are materialised by
   ``Base.metadata.create_all`` so tests can set up fixtures directly.
@@ -18,7 +18,8 @@ effect (Alembic / ``create_all`` walk ``Base.metadata``).
 from app.core.database import Base
 from app.models.customer import Customer
 from app.models.customer_target import CustomerTarget
-from app.models.invoice import Invoice, Payment
+# DISABLED — Invoice/Payment moving onto SalesOrder (see INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md)
+# from app.models.invoice import Invoice, Payment
 from app.models.item import Item
 from app.models.lead import Lead, LeadStageHistory
 from app.models.sales_activity import SalesActivity
@@ -38,12 +39,12 @@ __all__ = [
     "CustomerHealthScore",
     "CustomerTarget",
     "EffortEfficiencyScore",
-    "Invoice",
+    # "Invoice",  # DISABLED
     "Item",
     "Lead",
     "LeadScore",
     "LeadStageHistory",
-    "Payment",
+    # "Payment",  # DISABLED
     "SalesActivity",
     "SalesOrder",
     "SalesOrderItem",

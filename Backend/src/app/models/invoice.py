@@ -1,3 +1,7 @@
+# DISABLED — payment tracking is moving onto SalesOrder.
+# See INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md for full migration spec.
+# This file is preserved as reference; it is not imported anywhere.
+
 """Invoice + Payment ORM models — minimal accounts-receivable.
 
 Just enough AR to drive the customer-health payment signals: DSO (payment

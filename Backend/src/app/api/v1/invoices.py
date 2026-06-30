@@ -1,3 +1,7 @@
+# DISABLED — payment tracking is moving onto SalesOrder.
+# See INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md for full migration spec.
+# This file is preserved as reference; the router is not mounted in main.py.
+
 """Invoice endpoints — create / list / detail, plus recording payments.
 
 Invoices and payments are not editable or deletable; a correction is a new

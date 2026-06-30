@@ -27,12 +27,34 @@ const REP: EffortEfficiency = {
   quadrant: EffortQuadrant.HIGH_EFFORT_HIGH_EFFICIENCY,
 };
 
+const REP_HI: EffortEfficiency = {
+  ...REP,
+  rep_user_id: 'u-hi',
+  effort_score: 100,
+  efficiency_score: 100,
+  quadrant: EffortQuadrant.HIGH_EFFORT_HIGH_EFFICIENCY,
+};
+const REP_LO: EffortEfficiency = {
+  ...REP,
+  rep_user_id: 'u-lo',
+  effort_score: 0,
+  efficiency_score: 0,
+  quadrant: EffortQuadrant.LOW_EFFORT_LOW_EFFICIENCY,
+};
+
 describe('QuadrantScatter', () => {
-  it('positions a rep dot by effort (x) and efficiency (y)', () => {
+  it('positions reps relative to the data range with padding', () => {
+    render(<QuadrantScatter reps={[REP_HI, REP_LO]} onSelect={vi.fn()} />);
+    // viewRange([0, 100]) = [-30, 130] (30% unclamped padding).
+    // min always maps to 18.75% and max to 81.25% — always away from the chart edge.
+    expect(screen.getByTestId('qs-point-u-hi')).toHaveStyle({ left: '81.25%', bottom: '81.25%' });
+    expect(screen.getByTestId('qs-point-u-lo')).toHaveStyle({ left: '18.75%', bottom: '18.75%' });
+  });
+
+  it('renders the rep username as the dot label', () => {
     render(<QuadrantScatter reps={[REP]} onSelect={vi.fn()} />);
-    const point = screen.getByTestId('qs-point-u-1');
-    expect(point).toHaveStyle({ left: '80%', bottom: '75%' });
-    expect(point).toHaveTextContent('ravi@adagen.in');
+    // Label shows username (part before @) to avoid overflow in the chart
+    expect(screen.getByTestId('qs-point-u-1')).toHaveTextContent('ravi');
   });
 
   it('reports the selected rep on click', async () => {

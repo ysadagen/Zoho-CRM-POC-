@@ -160,7 +160,12 @@ class SyncService:
     async def sync_lead(
         self, req: LeadSyncRequest, idempotency_key: str
     ) -> SyncResponse:
-        payload = _lead_payload(req)
+        item_zoho_id: str | None = None
+        if req.item_id is not None:
+            item_zoho_id = await self._mappings.zoho_for_local(
+                MappingEntityType.ITEM, str(req.item_id)
+            )
+        payload = _lead_payload(req, item_zoho_id)
         return await self._push(
             entity_type=MappingEntityType.LEAD,
             local_id=str(req.id),
@@ -355,15 +360,27 @@ def _customer_payload(req: CustomerSyncRequest) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "Account_Name": req.company_name,
         "Industry": "Manufacturing",
+        "Inventory_ID": str(req.id),
         "is_privileged": req.is_privileged,
         "competitive_risk_level": req.competitive_risk_level,
+        "Customer_Type": req.customer_type,
     }
+    if req.contact_person:
+        payload["Contact_Person"] = req.contact_person
     if req.email:
         payload["Email"] = req.email
     if req.phone:
         payload["Phone"] = req.phone
     if req.address:
         payload["Billing_Street"] = req.address
+    if req.state:
+        payload["Billing_State"] = req.state
+    if req.city:
+        payload["Billing_City"] = req.city
+    if req.pincode:
+        payload["Billing_Code"] = req.pincode
+    if req.district:
+        payload["District"] = req.district
     if req.gstin:
         payload["GSTIN"] = req.gstin
     if req.customer_code:
@@ -379,6 +396,10 @@ def _vendor_payload(req: VendorSyncRequest) -> dict[str, Any]:
         "Category": "Manufacturing — Raw Material Supplier",
         "Inventory_ID": str(req.id),
     }
+    if req.contact_person:
+        payload["Contact_Person"] = req.contact_person
+    if req.vendor_code:
+        payload["Vendor_Code"] = req.vendor_code
     if req.email:
         payload["Email"] = req.email
     if req.phone:
@@ -397,16 +418,18 @@ def _item_payload(req: ItemSyncRequest) -> dict[str, Any]:
         "Product_Name": req.name,
         "Product_Code": req.sku,
         "Product_Category": req.item_type,
-        "Usage_Unit": req.unit_of_measure,
         "Unit_Price": float(req.unit_price),
         "Inventory_ID": str(req.id),
     }
     if req.reorder_threshold is not None:
-        payload["Reorder_Threshold"] = float(req.reorder_threshold)
+        payload["Reorder_Threshold"] = int(req.reorder_threshold)
+    # Usage_Unit is a Zoho Inventory/Books field — not present in Zoho CRM Products.
+    # Create a custom text field "Usage_Unit" in the Products module if you need
+    # unit_of_measure visible in Zoho, then add: payload["Usage_Unit"] = req.unit_of_measure
     return payload
 
 
-def _lead_payload(req: LeadSyncRequest) -> dict[str, Any]:
+def _lead_payload(req: LeadSyncRequest, item_zoho_id: str | None = None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "Last_Name": req.contact_name,
         "Lead_Source": _LEAD_SOURCE_MAP.get(req.source, "Other"),
@@ -421,10 +444,22 @@ def _lead_payload(req: LeadSyncRequest) -> dict[str, Any]:
         payload["State"] = req.state
     if req.city:
         payload["City"] = req.city
+    if req.district:
+        payload["District"] = req.district
+    if req.pincode:
+        payload["Zip_Code"] = req.pincode
     if req.notes:
         payload["Description"] = req.notes
     if req.estimated_budget is not None:
-        payload["Annual_Revenue"] = float(req.estimated_budget)
+        payload["Estimated_Budget"] = float(req.estimated_budget)
+    if req.quantity is not None:
+        payload["Quantity"] = req.quantity
+    if req.dealer_potential:
+        payload["dealer_potential"] = req.dealer_potential
+    if req.required_by_date is not None:
+        payload["required_by_date"] = req.required_by_date.isoformat()
+    if item_zoho_id:
+        payload["item_id"] = {"id": item_zoho_id}
     return payload
 
 
@@ -440,6 +475,8 @@ def _sales_order_payload(
         "Order_Date": req.order_date.isoformat(),
         "Inventory_ID": str(req.id),
     }
+    if req.expected_delivery_date is not None:
+        payload["Expected_Delivery_Date"] = req.expected_delivery_date.isoformat()
     if req.notes:
         payload["Description"] = req.notes
     if line_items:

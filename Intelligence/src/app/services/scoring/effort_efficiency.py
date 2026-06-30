@@ -1,15 +1,24 @@
 """Engine 2 — Effort & efficiency (§5).
 
-Effort = input invested; efficiency = output per input. Scored per sales rep
-over a period, **cohort-relative** (normalized within all active reps in the
-period), so the pure function takes the whole cohort at once.
+Effort = input invested; efficiency = output per input.
+
+Two scoring modes are supported via ``params["scoring_mode"]``:
+
+* ``"cohort"`` (v1 default) — scores are normalized within all active reps in
+  the period. The pure function takes the whole cohort at once. Breaks down
+  when the team is very small (≤ 2 reps) because one rep always scores high and
+  the other always scores low regardless of absolute performance.
+
+* ``"absolute"`` (v2, recommended for small teams) — each rep is scored
+  against fixed business thresholds stored in ``params["absolute_thresholds"]``.
+  Scores reflect actual performance levels; two reps can both score high (or
+  both score low). Thresholds are admin-tunable via a new config version.
 
 Layers (per §16):
 
 * :func:`compute_effort_efficiency` — pure: a list of per-rep raw inputs +
-  params → a list of per-rep results, with all cohort normalization done
-  internally. This is what the canonical vector EE-1 and the cohort-edge tests
-  exercise.
+  params → a list of per-rep results. ``scoring_mode`` governs normalization.
+  Defaults to ``"cohort"`` when the key is absent (backward compat with v1).
 * :class:`EffortEfficiencyService` — the orchestrator: gathers per-rep raw
   inputs via repositories, computes live on read, and (for recompute)
   snapshots.
@@ -104,21 +113,67 @@ def _quadrant(effort: float, efficiency: float, params: dict[str, Any]) -> str:
     return EffortQuadrant.LOW_EFFORT_LOW_EFFICIENCY.value
 
 
+def _effort_score_cohort(raw: float, effort_max: float) -> float:
+    return round(raw / effort_max * 100, 2) if effort_max > 0 else 0.0
+
+
+def _effort_score_absolute(raw: float, params: dict[str, Any]) -> float:
+    target = float(params["absolute_thresholds"]["effort_target"])
+    return round(min(raw / target * 100, 100.0), 2) if target > 0 else 0.0
+
+
+def _revenue_efficiency_cohort(rev_raw: float, rev_max: float) -> float:
+    return round(rev_raw / rev_max * 100, 2) if rev_max > 0 else 0.0
+
+
+def _revenue_efficiency_absolute(rev_raw: float, params: dict[str, Any]) -> float:
+    target = float(params["absolute_thresholds"]["revenue_per_effort_target"])
+    return round(min(rev_raw / target * 100, 100.0), 2) if target > 0 else 0.0
+
+
+def _time_to_close_cohort(
+    rep: RepEffortInputs, close_min: float | None, close_max: float | None
+) -> float:
+    if rep.avg_time_to_close is None or close_min is None or close_max is None:
+        return 0.0
+    if close_max == close_min:
+        return 100.0
+    return round((close_max - rep.avg_time_to_close) / (close_max - close_min) * 100, 2)
+
+
+def _time_to_close_absolute(rep: RepEffortInputs, params: dict[str, Any]) -> float:
+    # Score: 100 at 0 days, 50 at close_target_days, 0 at 2×close_target_days.
+    # Beyond 2×target stays 0.
+    if rep.avg_time_to_close is None:
+        return 0.0
+    target = float(params["absolute_thresholds"]["close_target_days"])
+    if target <= 0:
+        return 0.0
+    return round(max(0.0, (1.0 - rep.avg_time_to_close / (2.0 * target)) * 100.0), 2)
+
+
 def compute_effort_efficiency(
     cohort: list[RepEffortInputs], params: dict[str, Any]
 ) -> list[RepEffortResult]:
-    """Pure cohort-relative effort & efficiency scoring (§5)."""
-    raws = [_effort_raw(rep, params) for rep in cohort]
-    effort_max = max(raws, default=0.0)
+    """Pure effort & efficiency scoring. Dispatches on ``params["scoring_mode"]``.
 
-    # Revenue efficiency: won_value per effort point, then normalized.
+    ``"cohort"`` (default when key absent): scores normalized within the
+    passed-in cohort — breaks down at ≤ 2 reps.
+    ``"absolute"``: each rep scored against fixed thresholds in
+    ``params["absolute_thresholds"]`` — recommended for small teams.
+    """
+    mode = params.get("scoring_mode", "cohort")
+    raws = [_effort_raw(rep, params) for rep in cohort]
+
+    # Revenue per effort point (used by both modes).
     rev_raws = [
         (float(rep.won_value_sum) / raw if raw > 0 and rep.leads_won > 0 else 0.0)
         for rep, raw in zip(cohort, raws, strict=True)
     ]
-    rev_max = max(rev_raws, default=0.0)
 
-    # Time-to-close: inverted min-max over reps that have closed a deal.
+    # Cohort-mode pre-computations (ignored in absolute mode).
+    effort_max = max(raws, default=0.0)
+    rev_max = max(rev_raws, default=0.0)
     close_values = [rep.avg_time_to_close for rep in cohort if rep.avg_time_to_close is not None]
     close_min = min(close_values) if close_values else None
     close_max = max(close_values) if close_values else None
@@ -126,7 +181,14 @@ def compute_effort_efficiency(
     weights = params["efficiency_weights"]
     results: list[RepEffortResult] = []
     for rep, raw, rev_raw in zip(cohort, raws, rev_raws, strict=True):
-        effort_score = round(raw / effort_max * 100, 2) if effort_max > 0 else 0.0
+        if mode == "absolute":
+            effort_score = _effort_score_absolute(raw, params)
+            revenue_efficiency = _revenue_efficiency_absolute(rev_raw, params)
+            time_to_close = _time_to_close_absolute(rep, params)
+        else:
+            effort_score = _effort_score_cohort(raw, effort_max)
+            revenue_efficiency = _revenue_efficiency_cohort(rev_raw, rev_max)
+            time_to_close = _time_to_close_cohort(rep, close_min, close_max)
 
         stage_change = (
             round(rep.leads_progressed / rep.assigned_leads * 100, 2)
@@ -136,15 +198,6 @@ def compute_effort_efficiency(
         won_rate = (
             round(rep.leads_won / rep.assigned_leads * 100, 2) if rep.assigned_leads > 0 else 0.0
         )
-        revenue_efficiency = round(rev_raw / rev_max * 100, 2) if rev_max > 0 else 0.0
-        if rep.avg_time_to_close is None or close_min is None or close_max is None:
-            time_to_close = 0.0
-        elif close_max == close_min:
-            time_to_close = 100.0
-        else:
-            time_to_close = round(
-                (close_max - rep.avg_time_to_close) / (close_max - close_min) * 100, 2
-            )
         utilization = (
             round(rep.hot_lead_effort_points / rep.all_lead_effort_points * 100, 2)
             if rep.all_lead_effort_points > 0

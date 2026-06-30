@@ -38,11 +38,17 @@ class IntegrationLayerClient:
         *,
         id: uuid.UUID,
         company_name: str,
+        contact_person: str | None,
         email: str | None,
         phone: str | None,
         address: str | None,
+        state: str | None,
+        district: str | None,
+        city: str | None,
+        pincode: str | None,
         gstin: str | None,
         customer_code: str | None,
+        customer_type: str,
         is_privileged: bool,
         competitive_risk_level: str,
         notes: str | None,
@@ -51,11 +57,17 @@ class IntegrationLayerClient:
         payload: dict[str, Any] = {
             "id": str(id),
             "company_name": company_name,
+            "contact_person": contact_person,
             "email": email,
             "phone": phone,
             "address": address,
+            "state": state,
+            "district": district,
+            "city": city,
+            "pincode": pincode,
             "gstin": gstin,
             "customer_code": customer_code,
+            "customer_type": customer_type,
             "is_privileged": is_privileged,
             "competitive_risk_level": competitive_risk_level,
             "notes": notes,
@@ -68,6 +80,8 @@ class IntegrationLayerClient:
         *,
         id: uuid.UUID,
         vendor_name: str,
+        contact_person: str | None,
+        vendor_code: str | None,
         email: str | None,
         phone: str | None,
         address: str | None,
@@ -78,6 +92,8 @@ class IntegrationLayerClient:
         payload: dict[str, Any] = {
             "id": str(id),
             "vendor_name": vendor_name,
+            "contact_person": contact_person,
+            "vendor_code": vendor_code,
             "email": email,
             "phone": phone,
             "address": address,
@@ -118,6 +134,7 @@ class IntegrationLayerClient:
         so_number: str,
         customer_id: uuid.UUID,
         order_date: str,
+        expected_delivery_date: str | None,
         status: str,
         notes: str | None,
         items: list[dict[str, Any]],
@@ -128,6 +145,7 @@ class IntegrationLayerClient:
             "so_number": so_number,
             "customer_id": str(customer_id),
             "order_date": order_date,
+            "expected_delivery_date": expected_delivery_date,
             "status": status,
             "notes": notes,
             "items": items,
@@ -169,9 +187,15 @@ class IntegrationLayerClient:
         phone: str | None,
         email: str | None,
         state: str | None,
+        district: str | None,
         city: str | None,
+        pincode: str | None,
         notes: str | None,
         estimated_budget: Decimal | None,
+        quantity: Decimal | None,
+        item_id: uuid.UUID | None,
+        dealer_potential: str | None,
+        required_by_date: str | None,
         updated_at: datetime,
     ) -> None:
         payload: dict[str, Any] = {
@@ -182,11 +206,19 @@ class IntegrationLayerClient:
             "phone": phone,
             "email": email,
             "state": state,
+            "district": district,
             "city": city,
+            "pincode": pincode,
             "notes": notes,
+            "dealer_potential": dealer_potential,
+            "required_by_date": required_by_date,
         }
         if estimated_budget is not None:
             payload["estimated_budget"] = str(estimated_budget)
+        if quantity is not None:
+            payload["quantity"] = int(quantity)
+        if item_id is not None:
+            payload["item_id"] = str(item_id)
         key = _idempotency_key("lead", id, updated_at)
         await self._post("/api/v1/sync/leads", payload, key)
 

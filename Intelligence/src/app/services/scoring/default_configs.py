@@ -76,6 +76,30 @@ EFFORT_EFFICIENCY_V1: dict[str, Any] = {
     "quadrant_thresholds": {"effort": 60, "efficiency": 60},
 }
 
+# V2 — absolute-threshold mode (recommended for teams of ≤ 4 reps where
+# cohort normalization is meaningless). Inherits all V1 keys and adds
+# "scoring_mode" + "absolute_thresholds".
+#
+# Threshold guidance (all admin-tunable via a new config version):
+#   effort_target          — raw effort points that count as "full effort".
+#                            With weights VISIT=3/MEETING=4/FOLLOW_UP=2/CALL=1
+#                            a rep doing ~2 visits + 1 meeting + 3 follow-ups +
+#                            5 calls per week over 90 days ≈ 250 pts.
+#   revenue_per_effort_target — revenue (₹) per effort point for full revenue
+#                            efficiency. Tune to your average deal size.
+#   close_target_days      — deals closed at this many days score 50%;
+#                            faster → up to 100%, slower → down to 0% at
+#                            2× this value.
+EFFORT_EFFICIENCY_V2: dict[str, Any] = {
+    **EFFORT_EFFICIENCY_V1,
+    "scoring_mode": "absolute",
+    "absolute_thresholds": {
+        "effort_target": 250.0,
+        "revenue_per_effort_target": 500.0,
+        "close_target_days": 45.0,
+    },
+}
+
 CUSTOMER_HEALTH_V1: dict[str, Any] = {
     "weight_profiles": {
         "standard": {"w_p": 0.60, "w_r": 0.40},
