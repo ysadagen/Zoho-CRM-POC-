@@ -14,11 +14,12 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import func, select  # and_, case unused while Invoice/Payment are disabled
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.customer import Customer
-from app.models.invoice import Invoice, Payment
+# DISABLED — Invoice/Payment moving onto SalesOrder (see INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md)
+# from app.models.invoice import Invoice, Payment
 from app.models.item import Item
 from app.models.lead import Lead
 from app.models.sales_activity import ActivityType, SalesActivity
@@ -96,69 +97,74 @@ class CustomerMetricsRepository:
     # --- accounts receivable (DSO / overdue) -----------------------------
 
     async def dso_days(self, customer_id: uuid.UUID, *, since: date, as_of: date) -> float | None:
-        """Amount-weighted average days-to-pay over invoices fully paid (final
-        payment in ``[since, as_of]``). None when there are none."""
-        paid = (
-            select(
-                Payment.invoice_id.label("invoice_id"),
-                func.sum(Payment.amount).label("paid_sum"),
-                func.max(Payment.paid_date).label("last_paid"),
-            )
-            .group_by(Payment.invoice_id)
-            .subquery()
-        )
-        days = paid.c.last_paid - Invoice.invoice_date
-        stmt = (
-            select(
-                func.coalesce(func.sum(days * Invoice.amount), 0),
-                func.coalesce(func.sum(Invoice.amount), 0),
-            )
-            .select_from(Invoice)
-            .join(paid, paid.c.invoice_id == Invoice.id)
-            .where(
-                Invoice.customer_id == customer_id,
-                paid.c.paid_sum >= Invoice.amount,
-                paid.c.last_paid >= since,
-                paid.c.last_paid <= as_of,
-            )
-        )
-        weighted_days, total_amount = (await self._session.execute(stmt)).one()
-        total_amount = Decimal(total_amount)
-        if total_amount == 0:
-            return None
-        return float(Decimal(weighted_days)) / float(total_amount)
+        # DISABLED — Invoice/Payment removed; will be rewritten against SalesOrder.paid_amount/paid_date
+        # per INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md. Returns None so scoring engine uses its default.
+        #
+        # paid = (
+        #     select(
+        #         Payment.invoice_id.label("invoice_id"),
+        #         func.sum(Payment.amount).label("paid_sum"),
+        #         func.max(Payment.paid_date).label("last_paid"),
+        #     )
+        #     .group_by(Payment.invoice_id)
+        #     .subquery()
+        # )
+        # days = paid.c.last_paid - Invoice.invoice_date
+        # stmt = (
+        #     select(
+        #         func.coalesce(func.sum(days * Invoice.amount), 0),
+        #         func.coalesce(func.sum(Invoice.amount), 0),
+        #     )
+        #     .select_from(Invoice)
+        #     .join(paid, paid.c.invoice_id == Invoice.id)
+        #     .where(
+        #         Invoice.customer_id == customer_id,
+        #         paid.c.paid_sum >= Invoice.amount,
+        #         paid.c.last_paid >= since,
+        #         paid.c.last_paid <= as_of,
+        #     )
+        # )
+        # weighted_days, total_amount = (await self._session.execute(stmt)).one()
+        # total_amount = Decimal(total_amount)
+        # if total_amount == 0:
+        #     return None
+        # return float(Decimal(weighted_days)) / float(total_amount)
+        return None
 
     async def outstanding_totals(
         self, customer_id: uuid.UUID, as_of: date
     ) -> tuple[Decimal, Decimal]:
-        """Return ``(total_outstanding, overdue_outstanding)`` as of ``as_of``."""
-        paid = (
-            select(
-                Payment.invoice_id.label("invoice_id"),
-                func.sum(Payment.amount).label("paid_sum"),
-            )
-            .group_by(Payment.invoice_id)
-            .subquery()
-        )
-        outstanding = Invoice.amount - func.coalesce(paid.c.paid_sum, 0)
-        total_expr = func.coalesce(func.sum(case((outstanding > 0, outstanding), else_=0)), 0)
-        overdue_expr = func.coalesce(
-            func.sum(
-                case(
-                    (and_(outstanding > 0, Invoice.due_date < as_of), outstanding),
-                    else_=0,
-                )
-            ),
-            0,
-        )
-        stmt = (
-            select(total_expr, overdue_expr)
-            .select_from(Invoice)
-            .outerjoin(paid, paid.c.invoice_id == Invoice.id)
-            .where(Invoice.customer_id == customer_id)
-        )
-        total, overdue = (await self._session.execute(stmt)).one()
-        return Decimal(total), Decimal(overdue)
+        # DISABLED — Invoice/Payment removed; will be rewritten against SalesOrder.paid_amount/paid_date
+        # per INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md. Returns zeros so scoring engine uses its default.
+        #
+        # paid = (
+        #     select(
+        #         Payment.invoice_id.label("invoice_id"),
+        #         func.sum(Payment.amount).label("paid_sum"),
+        #     )
+        #     .group_by(Payment.invoice_id)
+        #     .subquery()
+        # )
+        # outstanding = Invoice.amount - func.coalesce(paid.c.paid_sum, 0)
+        # total_expr = func.coalesce(func.sum(case((outstanding > 0, outstanding), else_=0)), 0)
+        # overdue_expr = func.coalesce(
+        #     func.sum(
+        #         case(
+        #             (and_(outstanding > 0, Invoice.due_date < as_of), outstanding),
+        #             else_=0,
+        #         )
+        #     ),
+        #     0,
+        # )
+        # stmt = (
+        #     select(total_expr, overdue_expr)
+        #     .select_from(Invoice)
+        #     .outerjoin(paid, paid.c.invoice_id == Invoice.id)
+        #     .where(Invoice.customer_id == customer_id)
+        # )
+        # total, overdue = (await self._session.execute(stmt)).one()
+        # return Decimal(total), Decimal(overdue)
+        return Decimal(0), Decimal(0)
 
     # --- beat planning: handled customers --------------------------------
 

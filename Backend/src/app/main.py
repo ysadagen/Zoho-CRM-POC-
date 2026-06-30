@@ -28,7 +28,8 @@ from app.api.v1.crm import router as crm_router
 from app.api.v1.customer_targets import router as customer_targets_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.ingest import router as ingest_router
-from app.api.v1.invoices import router as invoices_router
+# DISABLED — invoice/payment moving onto SalesOrder (see INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md)
+# from app.api.v1.invoices import router as invoices_router
 from app.api.v1.items import router as items_router
 from app.api.v1.leads import router as leads_router
 from app.api.v1.purchase_orders import router as purchase_orders_router
@@ -268,7 +269,7 @@ def create_app() -> FastAPI:
     app.include_router(sales_orders_router, prefix="/api/v1")
     app.include_router(leads_router, prefix="/api/v1")
     app.include_router(activities_router, prefix="/api/v1")
-    app.include_router(invoices_router, prefix="/api/v1")
+    # app.include_router(invoices_router, prefix="/api/v1")  # DISABLED — see migration plan
     app.include_router(ingest_router, prefix="/api/v1")
     app.include_router(crm_router, prefix="/api/v1")
 

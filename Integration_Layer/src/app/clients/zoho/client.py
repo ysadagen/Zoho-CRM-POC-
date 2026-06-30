@@ -268,7 +268,10 @@ class ZohoClient:
             if status == httpx.codes.NOT_FOUND:
                 raise ZohoNotFoundError("Zoho resource not found", status_code=404)
             if status >= 400:
-                raise ZohoAPIError(f"Zoho returned an error ({status})", status_code=status)
+                body_text = response.text[:500] if response.content else ""
+                raise ZohoAPIError(
+                    f"Zoho returned an error ({status}): {body_text}", status_code=status
+                )
 
             return _parse_body(response)
 

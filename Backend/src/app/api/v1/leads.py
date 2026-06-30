@@ -50,9 +50,15 @@ def _enqueue_lead_sync(
         phone=read.phone,
         email=str(read.email) if read.email else None,
         state=read.state,
+        district=read.district,
         city=read.city,
+        pincode=read.pincode,
         notes=read.notes,
         estimated_budget=read.estimated_budget,
+        quantity=read.quantity,
+        item_id=read.item_id,
+        dealer_potential=read.dealer_potential.value if read.dealer_potential else None,
+        required_by_date=read.required_by_date.isoformat() if read.required_by_date else None,
         updated_at=read.updated_at,
     )
 

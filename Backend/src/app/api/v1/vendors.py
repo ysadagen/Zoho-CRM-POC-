@@ -31,6 +31,8 @@ def _enqueue_vendor_sync(
         il.sync_vendor,
         id=read.id,
         vendor_name=read.vendor_name,
+        contact_person=read.contact_person,
+        vendor_code=read.vendor_code,
         email=str(read.email) if read.email else None,
         phone=read.phone,
         address=read.address,

@@ -47,6 +47,7 @@ def _enqueue_so_sync(bg: BackgroundTasks, il: IntegrationLayerClient, read: Sale
         so_number=read.so_number,
         customer_id=read.customer_id,
         order_date=read.order_date.isoformat(),
+        expected_delivery_date=read.expected_delivery_date.isoformat() if read.expected_delivery_date else None,
         status=read.status.value,
         notes=read.notes,
         items=[

@@ -2,20 +2,52 @@
  * reuse design-system variables via inline `background` set from the
  * quadrant→CSS-variable map in QuadrantScatter.tsx. */
 
+/* 2-column grid: narrow y-axis column | right column (plot + x-axis) */
+.qs-wrap {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  grid-template-rows: auto auto;
+  gap: 4px 8px;
+}
+
+/* Y-axis column: stacks hi-tick, rotated label, lo-tick top→bottom */
+.qs-yaxis {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* X-axis sits in row 2, col 2 — below the plot */
+.qs-xaxis {
+  grid-row: 2;
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 2px;
+}
+
 .qs-plot {
+  grid-row: 1;
+  grid-column: 2;
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: clamp(360px, 48vh, 500px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg-2);
+  overflow: hidden;
 }
 
-/* Threshold lines at the 60/60 split (40% from the top for the y line). */
+/* Threshold divider lines */
 .qs-vline,
 .qs-hline {
   position: absolute;
   background: var(--line-2);
+  pointer-events: none;
 }
 .qs-vline {
   top: 0;
@@ -28,43 +60,70 @@
   height: 1px;
 }
 
-.qs-dot {
+/* Quadrant corner labels — purely decorative context text */
+.qs-quad {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  transform: translate(-50%, 50%);
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Zero-size anchor button — left/bottom position the coordinate point */
+.qs-point {
+  position: absolute;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
   cursor: pointer;
 }
 
-.qs-point {
+/* Dot centered on the anchor via translate(-50%, -50%) */
+.qs-dot {
   position: absolute;
-  transform: translate(-50%, 50%);
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  transform: translate(-50%, -50%);
 }
-.qs-point .qs-label {
+
+/* Rep username label — clipped to chart width by overflow: hidden on .qs-plot */
+.qs-label {
   position: absolute;
-  left: 12px;
+  left: 10px;
   top: -8px;
   white-space: nowrap;
   font-size: 11px;
   color: var(--ink-2);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
-.qs-axis-x,
-.qs-axis-y {
+/* Axis text */
+.qs-alabel-y {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
   font-size: 11px;
   color: var(--ink-3);
 }
-.qs-axis-y {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+
+.qs-alabel-x {
+  font-size: 11px;
+  color: var(--ink-3);
 }
 
-.qs-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: 1fr auto;
-  gap: 8px;
-  align-items: center;
+/* Scale tick values shown at axis ends */
+.qs-tick {
+  font-size: 10px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }

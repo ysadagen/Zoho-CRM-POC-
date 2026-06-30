@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.scoring_config import ScoringConfig, ScoringEngine
 from app.repositories.scoring_config_repo import ScoringConfigRepository
-from app.services.scoring.default_configs import DEFAULT_PARAMS_V1
+from app.services.scoring.default_configs import DEFAULT_PARAMS_V1, EFFORT_EFFICIENCY_V2
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,10 @@ _WEIGHT_SUM_TOLERANCE = 0.001
 class _EngineParamSpec:
     """How to validate one engine's ``params`` blob."""
 
-    #: every allowed (and required) top-level key
+    #: every required top-level key (must be present)
     keys: frozenset[str]
+    #: keys allowed but not required (present in newer config versions)
+    optional_keys: frozenset[str] = field(default_factory=frozenset)
     #: top-level dicts whose numeric values must sum to 1.0
     weight_sum_keys: tuple[str, ...] = ()
     #: band-list keys (validated monotonic, single None catch-all last)
@@ -52,6 +54,8 @@ _SPECS: dict[ScoringEngine, _EngineParamSpec] = {
     ),
     ScoringEngine.EFFORT_EFFICIENCY: _EngineParamSpec(
         keys=frozenset(DEFAULT_PARAMS_V1[ScoringEngine.EFFORT_EFFICIENCY]),
+        # scoring_mode and absolute_thresholds are v2-only; absent in v1 configs.
+        optional_keys=frozenset(EFFORT_EFFICIENCY_V2) - frozenset(DEFAULT_PARAMS_V1[ScoringEngine.EFFORT_EFFICIENCY]),
         weight_sum_keys=("efficiency_weights",),
     ),
     ScoringEngine.CUSTOMER_HEALTH: _EngineParamSpec(
@@ -88,7 +92,8 @@ def validate_params(engine: ScoringEngine, params: Any) -> None:
         raise ValidationError("params must be an object", code="INVALID_CONFIG_PARAMS")
 
     keys = set(params)
-    unknown = keys - spec.keys
+    allowed = spec.keys | spec.optional_keys
+    unknown = keys - allowed
     if unknown:
         raise ValidationError(
             f"Unknown config keys for {engine.value}: {sorted(unknown)}",
