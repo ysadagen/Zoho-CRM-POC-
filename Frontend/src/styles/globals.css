@@ -248,19 +248,41 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .topbar button.search .kbd { margin-left: auto; }
 
 /* Command palette (global search) */
-.search-overlay {
+
+/* Full-screen scrim — click anywhere outside modal to close */
+/* Scrim covers only the main content area — sidebar stays unaffected */
+.search-scrim {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-w);
   z-index: 60;
-  background: rgba(20, 24, 33, 0.38);
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 12vh 16px 16px;
+  background: rgba(20, 24, 33, 0.12);
 }
+/* Blur layer — same bounds as scrim, lighter blur so content is still readable */
+.search-blur-top {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-w);
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  background: rgba(20, 24, 33, 0.03);
+  pointer-events: none;
+}
+/* Dialog — centered on the main content area, not the full viewport */
 .search-modal {
-  width: 100%;
-  max-width: 560px;
+  position: fixed;
+  top: 10vh;
+  /* Center = sidebar-w + half of remaining width */
+  left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
+  transform: translateX(-50%);
+  z-index: 62;
+  /* Width relative to main content area with 16px padding each side */
+  width: min(560px, calc(100vw - var(--sidebar-w) - 32px));
   max-height: 70vh;
   display: flex;
   flex-direction: column;
@@ -441,7 +463,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 18px 18px;
+  padding: 18px 62px 18px 18px;
   position: relative;
 }
 .kpi .label {
@@ -451,10 +473,13 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 }
 .kpi .val {
   font-family: 'Croissant One', serif;
-  font-size: 28px;
+  font-size: clamp(13px, 1.6vw, 26px);
   color: var(--ink);
-  line-height: 1.1;
+  line-height: 1.2;
   margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kpi .delta {
   font-size: 11.5px;
@@ -479,6 +504,24 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .kpi.danger .icon-pill { background: var(--danger-tint); color: var(--danger); }
 .kpi.accent .icon-pill { background: var(--accent-tint); color: var(--accent-2); }
 .kpi.info .icon-pill { background: var(--info-soft); color: var(--info); }
+/* CRM Sync card — tinted border + purple icon-pill to visually separate from other KPIs */
+.kpi.crm { border-color: #c5d1f5; background: #f7f8ff; }
+.kpi.crm .icon-pill,
+.kpi.crm .kpi-sync-btn { background: #dce4fd; color: #3b5fd4; }
+/* Sync button replaces the decorative icon-pill */
+.kpi-sync-btn {
+  appearance: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.kpi-sync-btn:hover:not(:disabled) { background: #c8d4fc; }
+.kpi-sync-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.kpi-sync-btn:disabled { opacity: 0.6; cursor: default; }
+/* Spinning sync icon while ingest is running */
+@keyframes kpi-spin { to { transform: rotate(360deg); } }
+.kpi-spin { animation: kpi-spin 0.9s linear infinite; display: block; }
 
 /* ================ BADGES ================ */
 .badge {

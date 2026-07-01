@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import Select, func, select, text
+from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lead import Lead, LeadSource, LeadStage, LeadStageHistory
@@ -31,6 +31,7 @@ class LeadRepository:
         *,
         limit: int,
         offset: int,
+        search: str | None = None,
         stage: LeadStage | None = None,
         source: LeadSource | None = None,
         assigned_to_user_id: uuid.UUID | None = None,
@@ -43,6 +44,14 @@ class LeadRepository:
         """Return ``(leads_page, total_matching)`` — count after filters,
         before pagination, newest first."""
         filtered: Select[tuple[Lead]] = select(Lead)
+        if search is not None:
+            term = f"%{search.lower()}%"
+            filtered = filtered.where(
+                or_(
+                    func.lower(Lead.contact_name).like(term),
+                    func.lower(Lead.email).like(term),
+                )
+            )
         if stage is not None:
             filtered = filtered.where(Lead.stage == stage)
         if source is not None:

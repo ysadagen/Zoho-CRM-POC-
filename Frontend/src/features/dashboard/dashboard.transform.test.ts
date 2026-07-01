@@ -183,7 +183,7 @@ describe('toMovementVM', () => {
 });
 
 describe('buildKpis', () => {
-  it('produces the five tiles with live counts and an honest CRM placeholder', () => {
+  it('produces four tiles with live counts', () => {
     const kpis = buildKpis({
       items: [
         item({ status: 'IN_STOCK', stock_quantity: '10', unit_price: '5' }),
@@ -192,12 +192,11 @@ describe('buildKpis', () => {
       draftPoCount: 3,
       draftSoCount: 2,
     });
-    expect(kpis).toHaveLength(5);
+    expect(kpis).toHaveLength(4);
+    expect(kpis[0]?.label).toBe('Total Stock Value');
     expect(kpis[1]).toMatchObject({ label: 'Low Stock Items', value: '1' });
     expect(kpis[2]).toMatchObject({ label: 'Open Purchase Orders', value: '3' });
     expect(kpis[3]).toMatchObject({ label: 'Open Sales Orders', value: '2' });
-    expect(kpis[4]).toMatchObject({ label: 'CRM Sync Health', value: '—' });
-    expect(kpis[0]?.label).toBe('Total Stock Value');
   });
 });
 

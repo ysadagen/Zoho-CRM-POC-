@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button';
 import { Menu, MenuLinkItem } from '@/components/ui/Menu';
 import { formatLongDate } from '@/lib/format';
 
-import { CrmSyncCard } from '../components/CrmSyncCard';
 import { IntelligenceSummary } from '../components/IntelligenceSummary';
 import { KpiRow } from '../components/KpiRow';
 import { NeedsAttention } from '../components/NeedsAttention';
@@ -63,7 +62,6 @@ export function DashboardPage(): JSX.Element {
         <div className="flex col gap-16">
           <QuickActions />
           <NeedsAttention />
-          <CrmSyncCard />
         </div>
       </div>
     </>

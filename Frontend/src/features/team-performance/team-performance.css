@@ -93,19 +93,53 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
   transform: translate(-50%, -50%);
 }
+/* Slightly larger dot when multiple reps share the same position */
+.qs-dot.qs-dot-multi {
+  width: 20px;
+  height: 20px;
+  opacity: 0.9;
+}
+/* Count badge: small dark pill top-right of the multi-rep dot */
+.qs-dot-badge {
+  position: absolute;
+  top: -10px;
+  left: 4px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: rgba(20, 24, 33, 0.82);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  line-height: 1;
+}
 
-/* Rep username label — clipped to chart width by overflow: hidden on .qs-plot */
+/* Rep username label — tooltip that appears above the dot on hover/focus only,
+   so nearby labels never overlap each other. */
 .qs-label {
   position: absolute;
-  left: 10px;
-  top: -8px;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ink-2);
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  color: #fff;
+  background: rgba(20, 24, 33, 0.78);
+  border-radius: 4px;
+  padding: 2px 7px;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 10;
+}
+.qs-point:hover .qs-label,
+.qs-point:focus-visible .qs-label {
+  opacity: 1;
 }
 
 /* Axis text */
@@ -126,4 +160,40 @@
   font-size: 10px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* Score cell: progress bar + numeric value side by side */
+.tp-score-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tp-bar {
+  width: 56px;
+  flex-shrink: 0;
+}
+
+/* Rep group picker — clickable rows inside the picker drawer */
+.rep-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.12s;
+}
+.rep-pick-row:hover {
+  background: var(--bg-2);
+}
+.rep-pick-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }

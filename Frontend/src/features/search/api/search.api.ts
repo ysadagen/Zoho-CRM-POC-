@@ -3,7 +3,7 @@
  *
  * Search is inherently cross-feature, so it reuses the existing typed list
  * functions of each domain (`?search=` is supported by the Backend on all
- * three) rather than re-declaring endpoints. Each source is fetched
+ * four) rather than re-declaring endpoints. Each source is fetched
  * independently and failure-isolated: one source erroring marks only its own
  * group `failed` and never rejects the whole search.
  */
@@ -11,6 +11,7 @@
 import { routes } from '@/app/routes';
 import { listCustomers } from '@/features/customers/api/customers.api';
 import { listItems } from '@/features/items/api/items.api';
+import { listLeads } from '@/features/leads/api/leads.api';
 import { listVendors } from '@/features/vendors/api/vendors.api';
 import { ApiError } from '@/lib/api/errors';
 import { logger } from '@/lib/logger';
@@ -89,9 +90,32 @@ async function vendorGroup(query: string): Promise<SearchGroup> {
   }
 }
 
+async function leadGroup(query: string): Promise<SearchGroup> {
+  const base = { entity: 'lead' as const, title: 'Leads', icon: 'bag' as const };
+  try {
+    const page = await listLeads({ search: query, limit: PER_SOURCE_LIMIT, offset: 0 });
+    const results: SearchResult[] = page.items.map((l) => ({
+      entity: 'lead',
+      id: l.id,
+      label: l.contact_name,
+      sublabel: l.email ?? l.phone ?? null,
+      route: `${routes.leads}/${l.id}`,
+    }));
+    return { ...base, results, failed: false };
+  } catch (err) {
+    logSourceError('lead', err);
+    return { ...base, results: [], failed: true };
+  }
+}
+
 /** Fan out to every source in parallel. Groups come back in a stable order
- *  (Customers, Items, Vendors); each is independently failure-isolated. */
+ *  (Customers, Items, Vendors, Leads); each is independently failure-isolated. */
 export async function runSearch(query: string): Promise<SearchGroup[]> {
   const trimmed = query.trim();
-  return Promise.all([customerGroup(trimmed), itemGroup(trimmed), vendorGroup(trimmed)]);
+  return Promise.all([
+    customerGroup(trimmed),
+    itemGroup(trimmed),
+    vendorGroup(trimmed),
+    leadGroup(trimmed),
+  ]);
 }

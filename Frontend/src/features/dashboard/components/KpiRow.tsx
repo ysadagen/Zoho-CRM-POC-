@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { buildKpis } from '../dashboard.transform';
 import { useDashboardItems, useDraftPoCount, useDraftSoCount } from '../hooks/useDashboard';
 import { LoadError } from './LoadError';
+import { SyncZohoKpiCard } from './SyncZohoKpiCard';
 
 const SKELETON_KEYS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -52,6 +53,7 @@ export function KpiRow(): JSX.Element {
       {kpis.map((kpi) => (
         <KpiCard key={kpi.label} {...kpi} />
       ))}
+      <SyncZohoKpiCard />
     </div>
   );
 }

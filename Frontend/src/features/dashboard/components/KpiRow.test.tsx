@@ -73,9 +73,9 @@ describe('KpiRow', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
-    // CRM sync is an honest placeholder (no Integration Layer yet).
-    expect(screen.getByText('CRM Sync Health')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting Integration Layer')).toBeInTheDocument();
+    // CRM Sync card is rendered as a live interactive component.
+    expect(screen.getByText('CRM Sync')).toBeInTheDocument();
+    expect(screen.getByText('Not synced')).toBeInTheDocument();
   });
 
   it('renders an error with the Request ID and retries', async () => {

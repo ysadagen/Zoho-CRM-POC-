@@ -1,7 +1,7 @@
 import type { IconName } from '@/components/ui/Icon';
 
 /** The entity kinds the global palette can search. */
-export type SearchEntity = 'customer' | 'item' | 'vendor';
+export type SearchEntity = 'customer' | 'item' | 'vendor' | 'lead';
 
 /** One flattened, navigable hit. */
 export interface SearchResult {

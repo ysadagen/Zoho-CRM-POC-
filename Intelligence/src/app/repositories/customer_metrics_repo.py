@@ -14,10 +14,11 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select  # and_, case unused while Invoice/Payment are disabled
+from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.customer import Customer
+
 # DISABLED — Invoice/Payment moving onto SalesOrder (see INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md)
 # from app.models.invoice import Invoice, Payment
 from app.models.item import Item
@@ -97,39 +98,23 @@ class CustomerMetricsRepository:
     # --- accounts receivable (DSO / overdue) -----------------------------
 
     async def dso_days(self, customer_id: uuid.UUID, *, since: date, as_of: date) -> float | None:
-        # DISABLED — Invoice/Payment removed; will be rewritten against SalesOrder.paid_amount/paid_date
-        # per INVOICE_TO_SALES_ORDER_MIGRATION_PLAN.md. Returns None so scoring engine uses its default.
-        #
-        # paid = (
-        #     select(
-        #         Payment.invoice_id.label("invoice_id"),
-        #         func.sum(Payment.amount).label("paid_sum"),
-        #         func.max(Payment.paid_date).label("last_paid"),
-        #     )
-        #     .group_by(Payment.invoice_id)
-        #     .subquery()
-        # )
-        # days = paid.c.last_paid - Invoice.invoice_date
-        # stmt = (
-        #     select(
-        #         func.coalesce(func.sum(days * Invoice.amount), 0),
-        #         func.coalesce(func.sum(Invoice.amount), 0),
-        #     )
-        #     .select_from(Invoice)
-        #     .join(paid, paid.c.invoice_id == Invoice.id)
-        #     .where(
-        #         Invoice.customer_id == customer_id,
-        #         paid.c.paid_sum >= Invoice.amount,
-        #         paid.c.last_paid >= since,
-        #         paid.c.last_paid <= as_of,
-        #     )
-        # )
-        # weighted_days, total_amount = (await self._session.execute(stmt)).one()
-        # total_amount = Decimal(total_amount)
-        # if total_amount == 0:
-        #     return None
-        # return float(Decimal(weighted_days)) / float(total_amount)
-        return None
+        """Average order-to-shipment days for SHIPPED orders in [since, as_of).
+
+        Replaces invoice-based DSO (invoices removed). Faster fulfillment = lower
+        value = healthier score. Returns None when no shipped orders exist so the
+        scoring engine falls back to its configured default.
+        """
+        # PostgreSQL: DATE - DATE returns integer days directly.
+        stmt = select(
+            func.avg(cast(SalesOrder.shipped_date - SalesOrder.order_date, Float))
+        ).where(
+            SalesOrder.customer_id == customer_id,
+            SalesOrder.status == SalesOrderStatus.SHIPPED,
+            SalesOrder.shipped_date >= since,
+            SalesOrder.shipped_date <= as_of,
+        )
+        result = (await self._session.execute(stmt)).scalar()
+        return float(result) if result is not None else None
 
     async def outstanding_totals(
         self, customer_id: uuid.UUID, as_of: date

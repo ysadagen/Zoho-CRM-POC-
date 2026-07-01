@@ -102,3 +102,4 @@ Desktop.ini
 *.njsproj
 *.sln
 *.swpcsv_out/
+csv_out/
