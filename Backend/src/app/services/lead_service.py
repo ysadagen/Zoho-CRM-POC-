@@ -136,6 +136,7 @@ class LeadService:
         *,
         limit: int,
         offset: int,
+        search: str | None = None,
         stage: LeadStage | None = None,
         source: LeadSource | None = None,
         assigned_to_user_id: uuid.UUID | None = None,
@@ -148,6 +149,7 @@ class LeadService:
         return await self._leads.list_(
             limit=limit,
             offset=offset,
+            search=search,
             stage=stage,
             source=source,
             assigned_to_user_id=assigned_to_user_id,

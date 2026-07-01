@@ -37,6 +37,9 @@ function handlers(): RequestHandler[] {
     http.get(`${API}/vendors`, () =>
       HttpResponse.json(page([{ id: 'v1', vendor_name: 'Acme Supplies', vendor_code: 'VEN-1', email: null }])),
     ),
+    http.get(`${API}/leads`, () =>
+      HttpResponse.json(page([{ id: 'l1', contact_name: 'Acme Rep', email: 'rep@acme.com', phone: null }])),
+    ),
   ];
 }
 
@@ -45,6 +48,7 @@ function emptyHandlers(): RequestHandler[] {
     http.get(`${API}/customers`, () => HttpResponse.json(page([]))),
     http.get(`${API}/items`, () => HttpResponse.json(page([]))),
     http.get(`${API}/vendors`, () => HttpResponse.json(page([]))),
+    http.get(`${API}/leads`, () => HttpResponse.json(page([]))),
   ];
 }
 
@@ -84,14 +88,16 @@ describe('GlobalSearch', () => {
     await user.type(await screen.findByRole('textbox', { name: /search customers/i }), 'a');
     expect(screen.getByText(/type at least 2 characters/i)).toBeInTheDocument();
 
-    // Second char crosses the threshold and the three groups resolve.
+    // Second char crosses the threshold and all four groups resolve.
     await user.keyboard('c');
     expect(await screen.findByText('Acme Corp')).toBeInTheDocument();
     expect(screen.getByText('Acme Bottle 500ml')).toBeInTheDocument();
     expect(screen.getByText('Acme Supplies')).toBeInTheDocument();
+    expect(screen.getByText('Acme Rep')).toBeInTheDocument();
     expect(screen.getByText('Customers')).toBeInTheDocument();
     expect(screen.getByText('Items')).toBeInTheDocument();
     expect(screen.getByText('Vendors')).toBeInTheDocument();
+    expect(screen.getByText('Leads')).toBeInTheDocument();
   });
 
   it('shows an empty state when nothing matches', async () => {
@@ -118,6 +124,22 @@ describe('GlobalSearch', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('navigates to a lead and closes when a lead result is clicked', async () => {
+    server.use(...handlers());
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <GlobalSearch />
+        <LocationProbe />
+      </>,
+    );
+    await openAndType(user, 'ac');
+    await user.click(await screen.findByText('Acme Rep'));
+
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/leads/l1'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('moves the highlight with ArrowDown and opens it with Enter', async () => {
     server.use(...handlers());
     const user = userEvent.setup();
@@ -128,7 +150,7 @@ describe('GlobalSearch', () => {
       </>,
     );
     await openAndType(user, 'ac');
-    await screen.findByText('Acme Corp'); // results in: [customer, item, vendor]
+    await screen.findByText('Acme Corp'); // results in order: [customer, item, vendor, lead]
 
     // First result is highlighted by default; ArrowDown → the item; Enter opens it.
     await user.keyboard('{ArrowDown}{Enter}');
@@ -146,6 +168,7 @@ describe('GlobalSearch', () => {
         HttpResponse.json(page([{ id: 'i1', name: 'Acme Bottle 500ml', sku: 'SKU-1' }])),
       ),
       http.get(`${API}/vendors`, () => new HttpResponse(null, { status: 500 })),
+      http.get(`${API}/leads`, () => HttpResponse.json(page([]))),
     );
     const user = userEvent.setup();
     renderWithProviders(<GlobalSearch />);

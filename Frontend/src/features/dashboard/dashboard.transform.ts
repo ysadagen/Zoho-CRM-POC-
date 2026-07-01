@@ -142,15 +142,6 @@ export function buildKpis({ items, draftPoCount, draftSoCount }: KpiInputs): Das
       label: 'Open Sales Orders',
       value: String(draftSoCount),
     },
-    {
-      // No backend yet — the Integration Layer is a later phase. Shown as an
-      // honest placeholder rather than a fabricated percentage.
-      tone: 'default',
-      icon: 'sync',
-      label: 'CRM Sync Health',
-      value: '—',
-      delta: 'Awaiting Integration Layer',
-    },
   ];
 }
 

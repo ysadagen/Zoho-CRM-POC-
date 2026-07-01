@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
 import { Icon } from '@/components/ui/Icon';
@@ -11,8 +12,8 @@ export interface SearchPaletteProps {
   onClose: () => void;
 }
 
-/** The command-palette overlay. Owns the query input and keyboard navigation;
- *  data comes from {@link useGlobalSearch}. Rendered only while open. */
+/** The command-palette overlay. Rendered via a portal at document.body so the
+ *  scrim and blur zone escape any parent stacking context (e.g. sticky topbar). */
 export function SearchPalette({ onClose }: SearchPaletteProps): JSX.Element {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,8 +63,13 @@ export function SearchPalette({ onClose }: SearchPaletteProps): JSX.Element {
 
   let cursor = 0;
 
-  return (
-    <div className="search-overlay" onMouseDown={onClose}>
+  return createPortal(
+    <>
+      {/* Full-screen scrim — click anywhere outside modal to close */}
+      <div className="search-scrim" onMouseDown={onClose} aria-hidden="true" />
+      {/* Top-half blur zone — decorative depth behind the modal, no pointer events */}
+      <div className="search-blur-top" aria-hidden="true" />
+      {/* Dialog — floats above both layers */}
       <div
         className="search-modal"
         role="dialog"
@@ -78,7 +84,7 @@ export function SearchPalette({ onClose }: SearchPaletteProps): JSX.Element {
             ref={inputRef}
             type="text"
             className="search-input"
-            placeholder="Search customers, items, vendors…"
+            placeholder="Search customers, leads, items, vendors…"
             aria-label="Search customers, items, and vendors"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -102,7 +108,7 @@ export function SearchPalette({ onClose }: SearchPaletteProps): JSX.Element {
           )}
           {showEmpty && (
             <p className="search-hint">
-              No results for “{query}”.
+              No results for "{query}".
             </p>
           )}
 
@@ -118,7 +124,7 @@ export function SearchPalette({ onClose }: SearchPaletteProps): JSX.Element {
                     <span>{group.title}</span>
                   </div>
                   {group.failed ? (
-                    <p className="search-hint danger">Couldn’t load {group.title}.</p>
+                    <p className="search-hint danger">Couldn't load {group.title}.</p>
                   ) : (
                     group.results.map((result) => {
                       const index = cursor++;
@@ -145,6 +151,7 @@ export function SearchPalette({ onClose }: SearchPaletteProps): JSX.Element {
             })}
         </div>
       </div>
-    </div>
+    </>,
+    document.body,
   );
 }

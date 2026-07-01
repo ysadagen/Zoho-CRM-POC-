@@ -32,12 +32,48 @@ function toPct(v: number, lo: number, hi: number): number {
   return hi === lo ? 50 : ((v - lo) / (hi - lo)) * 100;
 }
 
-export interface QuadrantScatterProps {
-  reps: EffortEfficiency[];
-  onSelect: (rep: EffortEfficiency) => void;
+function shortName(email: string): string {
+  return email.split('@')[0] ?? email;
 }
 
-/** Effort (x, 0–100) × efficiency (y, 0–100) scatter, split at 60/60. */
+interface DotGroup {
+  key: string;
+  x: number;
+  y: number;
+  reps: EffortEfficiency[];
+}
+
+/** Group reps whose rounded position is identical so they render as one dot. */
+function groupByPosition(
+  reps: EffortEfficiency[],
+  xLo: number,
+  xHi: number,
+  yLo: number,
+  yHi: number,
+): DotGroup[] {
+  const map = new Map<string, DotGroup>();
+  for (const rep of reps) {
+    const x = toPct(clamp(rep.effort_score), xLo, xHi);
+    const y = toPct(clamp(rep.efficiency_score), yLo, yHi);
+    const key = `${Math.round(x)},${Math.round(y)}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.reps.push(rep);
+    } else {
+      map.set(key, { key, x, y, reps: [rep] });
+    }
+  }
+  return Array.from(map.values());
+}
+
+export interface QuadrantScatterProps {
+  reps: EffortEfficiency[];
+  /** Called with every rep that shares the clicked dot position. */
+  onSelect: (reps: EffortEfficiency[]) => void;
+}
+
+/** Effort (x, 0–100) × efficiency (y, 0–100) scatter, split at 60/60.
+ *  Reps at the same position are grouped into a single dot with a count badge. */
 export function QuadrantScatter({ reps, onSelect }: QuadrantScatterProps): JSX.Element {
   const effortVals = reps.map((r) => r.effort_score);
   const effVals = reps.map((r) => r.efficiency_score);
@@ -54,6 +90,8 @@ export function QuadrantScatter({ reps, onSelect }: QuadrantScatterProps): JSX.E
   const xMax = effortVals.length ? Math.round(Math.max(...effortVals)) : 100;
   const yMin = effVals.length ? Math.round(Math.min(...effVals)) : 0;
   const yMax = effVals.length ? Math.round(Math.max(...effVals)) : 100;
+
+  const groups = groupByPosition(reps, xLo, xHi, yLo, yHi);
 
   return (
     <div className="qs-wrap">
@@ -84,27 +122,45 @@ export function QuadrantScatter({ reps, onSelect }: QuadrantScatterProps): JSX.E
         {showVline && <div className="qs-vline" style={{ left: `${threshXPct}%` }} aria-hidden />}
         {showHline && <div className="qs-hline" style={{ bottom: `${threshYPct}%` }} aria-hidden />}
 
-        {/* Rep dots */}
-        {reps.map((rep) => {
-          const x = toPct(clamp(rep.effort_score), xLo, xHi);
-          const y = toPct(clamp(rep.efficiency_score), yLo, yHi);
-          const label = rep.rep_email.split('@')[0];
+        {/* One dot per position group */}
+        {groups.map(({ key, x, y, reps: groupReps }) => {
+          const first = groupReps[0]!;
+          const count = groupReps.length;
+          const names = groupReps.map((r) => shortName(r.rep_email));
+          const tooltipText =
+            count === 1
+              ? names[0]!
+              : count <= 3
+              ? names.join(', ')
+              : `${names.slice(0, 2).join(', ')} +${count - 2} more`;
+          const ariaLabel = groupReps
+            .map(
+              (r) =>
+                `${r.rep_email}: effort ${Math.round(r.effort_score)}, efficiency ${Math.round(r.efficiency_score)}`,
+            )
+            .join('; ');
+
           return (
             <button
-              key={rep.rep_user_id}
+              key={key}
               type="button"
               className="qs-point"
               style={{ left: `${x}%`, bottom: `${y}%` }}
-              data-testid={`qs-point-${rep.rep_user_id}`}
-              aria-label={`${rep.rep_email}: effort ${Math.round(rep.effort_score)}, efficiency ${Math.round(rep.efficiency_score)}`}
-              onClick={() => onSelect(rep)}
+              data-testid={`qs-point-${first.rep_user_id}`}
+              aria-label={ariaLabel}
+              onClick={() => onSelect(groupReps)}
             >
               <span
-                className="qs-dot"
-                style={{ background: QUADRANT_COLOR[rep.quadrant] }}
+                className={count > 1 ? 'qs-dot qs-dot-multi' : 'qs-dot'}
+                style={{ background: QUADRANT_COLOR[first.quadrant] }}
                 aria-hidden
               />
-              <span className="qs-label">{label}</span>
+              {count > 1 && (
+                <span className="qs-dot-badge" aria-hidden>
+                  {count}
+                </span>
+              )}
+              <span className="qs-label">{tooltipText}</span>
             </button>
           );
         })}

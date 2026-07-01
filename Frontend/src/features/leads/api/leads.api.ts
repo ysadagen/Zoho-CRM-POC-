@@ -22,6 +22,7 @@ const intel = { baseURL: env.intelligenceBaseUrl };
 export interface ListLeadsParams {
   limit: number;
   offset: number;
+  search?: string;
   stage?: LeadStage;
   source?: LeadSource;
   assigned_to_user_id?: string;
@@ -29,6 +30,7 @@ export interface ListLeadsParams {
 
 function listQuery(params: ListLeadsParams): Record<string, string | number> {
   const query: Record<string, string | number> = { limit: params.limit, offset: params.offset };
+  if (params.search) query.search = params.search;
   if (params.stage) query.stage = params.stage;
   if (params.source) query.source = params.source;
   if (params.assigned_to_user_id) query.assigned_to_user_id = params.assigned_to_user_id;

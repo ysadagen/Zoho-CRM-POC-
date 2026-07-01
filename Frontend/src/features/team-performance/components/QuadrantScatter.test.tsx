@@ -62,6 +62,6 @@ describe('QuadrantScatter', () => {
     const user = userEvent.setup();
     render(<QuadrantScatter reps={[REP]} onSelect={onSelect} />);
     await user.click(screen.getByTestId('qs-point-u-1'));
-    expect(onSelect).toHaveBeenCalledWith(REP);
+    expect(onSelect).toHaveBeenCalledWith([REP]);
   });
 });

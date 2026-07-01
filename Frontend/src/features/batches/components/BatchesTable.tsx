@@ -11,7 +11,7 @@ import { BatchStatus } from '@/types/enums';
 
 import { BatchStatusBadge } from './BatchStatusBadge';
 
-const COL_COUNT = 7;
+const COL_COUNT = 8;
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'];
 
 interface QcAction {
@@ -63,6 +63,7 @@ export function BatchesTable({
             <th>Expiry</th>
             <th className="right">Quantity</th>
             <th>Location</th>
+            <th className="right">Unit Cost</th>
             <th aria-label="QC actions" />
           </tr>
         </thead>
@@ -109,9 +110,9 @@ export function BatchesTable({
                   </span>
                 </td>
                 <td className="right mono">{formatQuantity(batch.quantity)}</td>
-                <td className="muted">
-                  {batch.storage_location ?? '—'}
-                  {batch.unit_cost ? ` · ${formatCurrency(batch.unit_cost)}` : ''}
+                <td className="muted">{batch.storage_location ?? '—'}</td>
+                <td className="right muted">
+                  {batch.unit_cost ? formatCurrency(batch.unit_cost) : '—'}
                 </td>
                 <td className="right">
                   <span className="flex gap-8 justify-end">

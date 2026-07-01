@@ -96,6 +96,7 @@ async def list_leads(
     current_user: _CurrentUser,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     offset: Annotated[int, Query(ge=0)] = 0,
+    search: Annotated[str | None, Query(max_length=255)] = None,
     stage: Annotated[LeadStage | None, Query()] = None,
     source: Annotated[LeadSource | None, Query()] = None,
     assigned_to_user_id: Annotated[uuid.UUID | None, Query()] = None,
@@ -107,14 +108,14 @@ async def list_leads(
 ) -> LeadList:
     """Return a page of leads, newest first.
 
-    Filters compose: ``stage``, ``source``, ``assigned_to_user_id``,
-    ``state``, ``district``, a ``created_from``/``created_to`` date window,
-    and ``is_active``. (Filtering by lead *classification* — HOT/MEDIUM/COLD
-    — arrives with the scoring engine in Phase 2B.)
+    Filters compose: free-text ``search`` (contact name or email), ``stage``,
+    ``source``, ``assigned_to_user_id``, ``state``, ``district``, a
+    ``created_from``/``created_to`` date window, and ``is_active``.
     """
     leads, total = await LeadService(session).list_(
         limit=limit,
         offset=offset,
+        search=search,
         stage=stage,
         source=source,
         assigned_to_user_id=assigned_to_user_id,

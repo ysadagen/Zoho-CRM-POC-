@@ -19,11 +19,16 @@ export function GlobalSearch(): JSX.Element {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setOpen(true);
+        return;
+      }
+      if (event.key === 'Escape' && open) {
+        event.preventDefault();
+        close();
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [open, close]);
 
   return (
     <div className="search-wrap">
