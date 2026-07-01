@@ -1,13 +1,23 @@
 import { useState } from 'react';
 
 import { useToast } from '@/components/toast/useToast';
-import { Icon } from '@/components/ui/Icon';
+import { Icon, type IconName } from '@/components/ui/Icon';
 import { useApiError } from '@/hooks/useApiError';
 import { cx } from '@/lib/cx';
 
 import { triggerIngest } from '../api/crm.api';
 
 type SyncState = 'idle' | 'syncing' | 'ok' | 'error';
+
+/** Per-state glyph + its entrance animation. Keying the <Icon> by state
+ *  remounts it, so the animation replays on every transition (submit-style
+ *  spinner → success pop → error shake). */
+const GLYPH: Record<SyncState, { icon: IconName; anim?: string }> = {
+  idle: { icon: 'sync' },
+  syncing: { icon: 'sync', anim: 'kpi-spin' },
+  ok: { icon: 'check', anim: 'kpi-sync-pop' },
+  error: { icon: 'close', anim: 'kpi-sync-shake' },
+};
 
 function elapsedLabel(since: Date): string {
   const minutes = Math.floor((Date.now() - since.getTime()) / 60_000);
@@ -67,17 +77,20 @@ export function SyncZohoKpiCard(): JSX.Element {
   const deltaDir: 'up' | 'down' | undefined =
     syncState === 'ok' ? 'up' : syncState === 'error' ? 'down' : undefined;
 
+  const glyph = GLYPH[syncState];
+
   return (
     <div className="kpi crm">
       <button
         type="button"
         className="kpi-sync-btn icon-pill"
+        data-sync-state={syncState}
         onClick={handleSync}
         disabled={syncState === 'syncing'}
         aria-label="Sync from Zoho CRM"
         title="Sync from Zoho CRM"
       >
-        <Icon name="sync" size={14} className={syncState === 'syncing' ? 'kpi-spin' : undefined} />
+        <Icon key={syncState} name={glyph.icon} size={14} className={glyph.anim} />
       </button>
       <div className="label">CRM Sync</div>
       <div className="val">{value}</div>

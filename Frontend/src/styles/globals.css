@@ -508,20 +508,76 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .kpi.crm { border-color: #c5d1f5; background: #f7f8ff; }
 .kpi.crm .icon-pill,
 .kpi.crm .kpi-sync-btn { background: #dce4fd; color: #3b5fd4; }
-/* Sync button replaces the decorative icon-pill */
+/* Sync button replaces the decorative icon-pill. z-index:0 makes it its own
+   stacking context so the ::before glow sits behind the pill but above the
+   card background. (Position stays absolute — inherited from .icon-pill.) */
 .kpi-sync-btn {
   appearance: none;
   border: none;
   padding: 0;
   cursor: pointer;
-  transition: background 0.12s;
+  z-index: 0;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 .kpi-sync-btn:hover:not(:disabled) { background: #c8d4fc; }
 .kpi-sync-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
 .kpi-sync-btn:disabled { opacity: 0.6; cursor: default; }
-/* Spinning sync icon while ingest is running */
+/* Submit-style morph — the pill recolours to match the success / error glyph. */
+.kpi.crm .kpi-sync-btn[data-sync-state='ok'] { background: var(--success-soft); color: var(--success); }
+.kpi.crm .kpi-sync-btn[data-sync-state='error'] { background: var(--danger-tint); color: var(--danger); }
+
+/* Animated gradient glow halo on hover / focus — idea from kocsten's pen,
+   tuned to the CRM card's indigo → blue → teal palette. */
+.kpi-sync-btn::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  border-radius: 11px;
+  background: linear-gradient(120deg, #7c6cf0, #3b5fd4, #2f9e6f, #7c6cf0);
+  background-size: 300% 300%;
+  filter: blur(7px);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.kpi-sync-btn:hover:not(:disabled)::before,
+.kpi-sync-btn:focus-visible::before {
+  opacity: 0.7;
+  animation: kpi-glow 3s ease infinite;
+}
+@keyframes kpi-glow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Spinning sync icon while ingest is running. */
 @keyframes kpi-spin { to { transform: rotate(360deg); } }
 .kpi-spin { animation: kpi-spin 0.9s linear infinite; display: block; }
+/* Success checkmark springs in; the error glyph shakes (idea from Andrew
+   Millen's submit button, adapted to the icon-pill). */
+@keyframes kpi-sync-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.kpi-sync-pop { animation: kpi-sync-pop 0.4s cubic-bezier(0.2, 0.8, 0.3, 1.4) both; display: block; }
+@keyframes kpi-sync-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+.kpi-sync-shake { animation: kpi-sync-shake 0.4s ease both; display: block; }
+
+/* Reduced-motion: keep the state colours & glyphs, drop the motion. */
+@media (prefers-reduced-motion: reduce) {
+  .kpi-sync-btn:hover:not(:disabled)::before,
+  .kpi-sync-btn:focus-visible::before { animation: none; }
+  .kpi-spin, .kpi-sync-pop, .kpi-sync-shake { animation: none; }
+}
 
 /* ================ BADGES ================ */
 .badge {

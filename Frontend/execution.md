@@ -1278,6 +1278,51 @@ The Backend (`:8000`) must be running for live results.
 
 ---
 
+## Phase 14 — Zoho Sync button animations (2026-07-01)
+
+**Spec.** Animate the dashboard's Zoho-sync trigger — the icon-pill in the
+"CRM Sync" KPI card (`SyncZohoKpiCard`) — with two on-brand effects, ideas
+taken from two CodePens: (1) an **animated gradient glow halo** revealed on
+hover/focus (kocsten `rggjXp`), and (2) a **submit-style state morph**
+(Andrew Millen `MoKLob`) — spinning sync icon while syncing → spring "pop"
+checkmark on success → shake ✗ on error. Colours tuned to the card's muted
+indigo/blue/teal palette; `prefers-reduced-motion` honoured; no layout
+change; behaviour (the `triggerIngest` call, toasts, Request-ID surfacing)
+unchanged.
+
+**Files touched.**
+- `src/features/dashboard/components/SyncZohoKpiCard.tsx` — per-state
+  `GLYPH` map (icon + entrance-animation class); button now carries
+  `data-sync-state`; `<Icon>` is keyed by state so the animation replays on
+  every transition.
+- `src/features/dashboard/components/SyncZohoKpiCard.test.tsx` — **new**;
+  6 tests covering idle / syncing (disabled + spinner) / success (pop) /
+  non-ok (shake) / network-error (error state + Request ID) / double-click
+  guard.
+- `src/styles/globals.css` — extended the `.kpi-sync-btn` block: stacking
+  context + `::before` gradient glow (`@keyframes kpi-glow`), `data-sync-state`
+  success/error recolour, `@keyframes kpi-sync-pop` / `kpi-sync-shake`, and a
+  `prefers-reduced-motion` guard that drops all four animations.
+
+**How to test (you).**
+```
+cd Frontend
+npm run lint            # clean (9 pre-existing warnings in search.api.test.ts only)
+npm run build           # tsc + vite, clean (pre-existing >500 kB chunk warning only)
+npm run test            # 393 passed (was 385): +6 SyncZohoKpiCard, +2 elsewhere
+npm run test:coverage   # thresholds hold (global >= 80, lib >= 95)
+npm run dev             # then, on the Dashboard "CRM Sync" KPI card:
+                        #   hover the sync-icon pill -> animated indigo/teal glow halo;
+                        #   click -> icon spins while syncing;
+                        #   on success -> green checkmark pops in;
+                        #   on failure -> red X shakes (toast carries the Request ID).
+                        #   With OS "reduce motion" on: same states, no motion.
+```
+
+The Backend (`:8000`) must be running for live results.
+
+---
+
 ## Things this app must NEVER do
 
 Recorded here so a future session doesn't reintroduce them.
