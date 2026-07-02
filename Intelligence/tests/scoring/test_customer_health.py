@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.score_snapshot import HealthClassification
+from app.models.scoring_config import ScoringConfig, ScoringEngine
 from app.models.user import User
 from app.services.scoring.customer_health import (
     CustomerHealthInputs,
@@ -14,7 +18,7 @@ from app.services.scoring.customer_health import (
     compute_customer_health,
 )
 from app.services.scoring.default_configs import CUSTOMER_HEALTH_V1
-from tests.factories import make_customer
+from tests.factories import make_customer, make_customer_health_score
 
 _PARAMS = CUSTOMER_HEALTH_V1
 HEALTH_URL = "/api/v1/intelligence/customer-health"
@@ -122,14 +126,181 @@ async def test_customer_health_unknown_returns_404(
     assert resp.json()["error"]["code"] == "CUSTOMER_NOT_FOUND"
 
 
+async def _get_active_config(session: AsyncSession) -> ScoringConfig:
+    stmt = select(ScoringConfig).where(
+        ScoringConfig.engine == ScoringEngine.CUSTOMER_HEALTH,
+        ScoringConfig.is_active.is_(True),
+    )
+    return (await session.execute(stmt)).scalar_one()
+
+
+async def test_customer_health_list_returns_empty_without_snapshots(
+    authenticated_client: tuple[AsyncClient, User], db_session: AsyncSession
+) -> None:
+    """List endpoint returns an empty page when no snapshots exist yet."""
+    client, user = authenticated_client
+    db_session.add(make_customer(user.id, company_name="No Snapshot Co"))
+    await db_session.commit()
+
+    resp = await client.get(HEALTH_URL)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 0
+    assert body["items"] == []
+    assert body["limit"] == 25
+    assert body["offset"] == 0
+
+
+async def test_customer_health_list_returns_paginated_from_snapshots(
+    authenticated_client: tuple[AsyncClient, User], db_session: AsyncSession
+) -> None:
+    """List endpoint returns snapshot rows with pagination envelope."""
+    client, user = authenticated_client
+    config = await _get_active_config(db_session)
+    customer = make_customer(user.id, company_name="Snapshot Co")
+    db_session.add(customer)
+    await db_session.flush()
+    db_session.add(
+        make_customer_health_score(
+            customer.id, config, health_score=Decimal("62.50"),
+            classification=HealthClassification.STABLE,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(HEALTH_URL)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["limit"] == 25
+    assert body["offset"] == 0
+    assert body["total"] >= 1
+    names = [i["company_name"] for i in body["items"]]
+    assert "Snapshot Co" in names
+    match = next(i for i in body["items"] if i["company_name"] == "Snapshot Co")
+    assert match["health_score"] == 62.5
+    assert match["classification"] == "STABLE"
+
+
 async def test_customer_health_list_filters_classification(
     authenticated_client: tuple[AsyncClient, User], db_session: AsyncSession
 ) -> None:
+    """Classification filter is applied at the DB level — other bands excluded."""
     client, user = authenticated_client
-    db_session.add(make_customer(user.id, company_name="AR Co"))
+    config = await _get_active_config(db_session)
+    at_risk = make_customer(user.id, company_name="AR Co")
+    healthy = make_customer(user.id, company_name="Healthy Co")
+    db_session.add_all([at_risk, healthy])
+    await db_session.flush()
+    db_session.add(
+        make_customer_health_score(
+            at_risk.id, config,
+            health_score=Decimal("35.00"),
+            classification=HealthClassification.AT_RISK,
+        )
+    )
+    db_session.add(
+        make_customer_health_score(
+            healthy.id, config,
+            health_score=Decimal("85.00"),
+            classification=HealthClassification.HEALTHY,
+        )
+    )
     await db_session.commit()
+
     resp = await client.get(HEALTH_URL, params={"classification": "AT_RISK"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["total"] >= 1
     assert all(i["classification"] == "AT_RISK" for i in body["items"])
+    company_names = [i["company_name"] for i in body["items"]]
+    assert "Healthy Co" not in company_names
+
+
+async def test_customer_health_list_pagination_limit_offset(
+    authenticated_client: tuple[AsyncClient, User], db_session: AsyncSession
+) -> None:
+    """Limit and offset are forwarded to the DB query."""
+    client, user = authenticated_client
+    config = await _get_active_config(db_session)
+    customers = [make_customer(user.id, company_name=f"Pager Co {i}") for i in range(3)]
+    db_session.add_all(customers)
+    await db_session.flush()
+    for i, c in enumerate(customers):
+        db_session.add(
+            make_customer_health_score(
+                c.id, config,
+                health_score=Decimal(str(50 + i)),
+                classification=HealthClassification.STABLE,
+            )
+        )
+    await db_session.commit()
+
+    resp = await client.get(HEALTH_URL, params={"limit": 2, "offset": 0})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert len(body["items"]) <= 2
+
+    resp2 = await client.get(HEALTH_URL, params={"limit": 2, "offset": 2})
+    assert resp2.status_code == 200
+    body2 = resp2.json()
+    assert body2["limit"] == 2
+    assert body2["offset"] == 2
+
+
+async def test_customer_health_list_inactive_customers_excluded(
+    authenticated_client: tuple[AsyncClient, User], db_session: AsyncSession
+) -> None:
+    """Inactive customers are excluded even when they have a snapshot."""
+    client, user = authenticated_client
+    config = await _get_active_config(db_session)
+    inactive = make_customer(user.id, company_name="Inactive Co", is_active=False)
+    db_session.add(inactive)
+    await db_session.flush()
+    db_session.add(make_customer_health_score(inactive.id, config))
+    await db_session.commit()
+
+    resp = await client.get(HEALTH_URL)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert all(i["company_name"] != "Inactive Co" for i in body["items"])
+
+
+async def test_customer_health_list_only_latest_snapshot_per_customer(
+    authenticated_client: tuple[AsyncClient, User], db_session: AsyncSession
+) -> None:
+    """Only the most recent snapshot per customer appears, not stale ones."""
+    client, user = authenticated_client
+    config = await _get_active_config(db_session)
+    customer = make_customer(user.id, company_name="Multi Snap Co")
+    db_session.add(customer)
+    await db_session.flush()
+    # Old snapshot — AT_RISK
+    db_session.add(
+        make_customer_health_score(
+            customer.id, config,
+            health_score=Decimal("30.00"),
+            classification=HealthClassification.AT_RISK,
+        )
+    )
+    await db_session.commit()
+    # Newer snapshot — HEALTHY (committed separately so computed_at differs)
+    db_session.add(
+        make_customer_health_score(
+            customer.id, config,
+            health_score=Decimal("80.00"),
+            classification=HealthClassification.HEALTHY,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(HEALTH_URL)
+    assert resp.status_code == 200
+    body = resp.json()
+    match = next((i for i in body["items"] if i["company_name"] == "Multi Snap Co"), None)
+    assert match is not None
+    assert match["classification"] == "HEALTHY"
+    assert match["health_score"] == 80.0
+    # Exactly one row for this customer
+    assert sum(1 for i in body["items"] if i["company_name"] == "Multi Snap Co") == 1

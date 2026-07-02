@@ -216,12 +216,33 @@ class CustomerHealthOut(BaseModel):
             defaults_applied=result.defaults_applied,
         )
 
+    @classmethod
+    def from_snapshot(
+        cls, score: CustomerHealthScore, customer: Customer
+    ) -> CustomerHealthOut:
+        """Build from a persisted snapshot row (list view)."""
+        return cls(
+            customer_id=customer.id,
+            company_name=customer.company_name,
+            computed_at=score.computed_at,
+            weight_profile=score.weight_profile,
+            cps=float(score.cps),
+            crs=float(score.crs),
+            cps_components=score.components["cps"],
+            crs_components=score.components["crs"],
+            health_score=float(score.health_score),
+            classification=score.classification,
+            defaults_applied=list(score.defaults_applied),
+        )
+
 
 class CustomerHealthList(BaseModel):
-    """Envelope for ``GET /intelligence/customer-health`` (lowest health first)."""
+    """Paginated envelope for ``GET /intelligence/customer-health`` (lowest health first)."""
 
     items: list[CustomerHealthOut]
     total: int
+    limit: int
+    offset: int
 
 
 class CustomerHealthSnapshotOut(BaseModel):

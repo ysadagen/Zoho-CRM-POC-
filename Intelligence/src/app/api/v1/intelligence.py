@@ -111,24 +111,32 @@ async def get_lead_score(
 @router.get(
     "/customer-health",
     response_model=CustomerHealthList,
-    summary="Live health for all active customers",
+    summary="Latest health snapshot per active customer, paginated",
 )
 async def list_customer_health(
     session: _Session,
     current_user: _CurrentUser,
     classification: Annotated[HealthClassification | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> CustomerHealthList:
-    """Live-compute health for every active customer, lowest health first
-    (most at-risk on top). Filter by ``classification``."""
-    computed_at = datetime.now(UTC)
-    rows = await CustomerHealthService(session).list_live()
-    items = [
-        CustomerHealthOut.from_result(customer, result, computed_at) for customer, result in rows
-    ]
-    if classification is not None:
-        items = [i for i in items if i.classification == classification]
-    items.sort(key=lambda i: i.health_score)
-    return CustomerHealthList(items=items, total=len(items))
+    """Latest persisted health snapshot per active customer (lowest score first).
+
+    Filter by ``classification`` (HEALTHY / STABLE / AT_RISK / CRITICAL).
+    Paginate with ``limit`` (1-200, default 25) and ``offset`` (default 0).
+    Returns an empty list when no snapshots exist - trigger
+    ``POST /intelligence/recompute`` to populate."""
+    rows, total = await CustomerHealthService(session).list_from_snapshots(
+        limit=limit,
+        offset=offset,
+        classification=classification,
+    )
+    return CustomerHealthList(
+        items=[CustomerHealthOut.from_snapshot(score, customer) for score, customer in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(

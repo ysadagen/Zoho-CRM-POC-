@@ -665,6 +665,8 @@ export interface CustomerHealth {
 export interface CustomerHealthList {
   items: CustomerHealth[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface CustomerHealthSnapshot {

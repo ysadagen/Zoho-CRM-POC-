@@ -19,6 +19,8 @@ from app.models.item import Item
 from app.models.lead import Lead
 from app.models.sales_activity import ActivityType, SalesActivity
 from app.models.sales_order import SalesOrder, SalesOrderItem, SalesOrderStatus
+from app.models.score_snapshot import CustomerHealthScore, HealthClassification
+from app.models.scoring_config import ScoringConfig
 from app.models.user import User
 
 
@@ -143,6 +145,43 @@ def make_invoice(
         amount=amount,
         created_by_user_id=actor_id,
         updated_by_user_id=actor_id,
+    )
+
+
+def make_customer_health_score(
+    customer_id: uuid.UUID,
+    config: ScoringConfig,
+    *,
+    health_score: Decimal = Decimal("58.90"),
+    classification: HealthClassification = HealthClassification.AT_RISK,
+    cps: Decimal = Decimal("50.00"),
+    crs: Decimal = Decimal("30.00"),
+) -> CustomerHealthScore:
+    return CustomerHealthScore(
+        customer_id=customer_id,
+        config_id=config.id,
+        cps=cps,
+        crs=crs,
+        components={
+            "cps": {
+                "volume_achievement": 50,
+                "payment_discipline": 50,
+                "engagement": 50,
+                "growth_trend": 50,
+                "margin_quality": 50,
+            },
+            "crs": {
+                "volume_decline": 30,
+                "payment_risk": 30,
+                "competitive_risk": 30,
+                "engagement_gap": 30,
+                "service_risk": 30,
+            },
+        },
+        weight_profile="standard",
+        health_score=health_score,
+        classification=classification,
+        defaults_applied=[],
     )
 
 

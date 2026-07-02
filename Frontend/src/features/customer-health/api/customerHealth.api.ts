@@ -7,11 +7,15 @@ const CUSTOMER_HEALTH = '/api/v1/intelligence/customer-health';
 
 export interface ListCustomerHealthParams {
   classification?: HealthClassification;
+  limit?: number;
+  offset?: number;
 }
 
 function listQuery(params: ListCustomerHealthParams): Record<string, string> {
   const query: Record<string, string> = {};
   if (params.classification) query.classification = params.classification;
+  if (params.limit !== undefined) query.limit = String(params.limit);
+  if (params.offset !== undefined) query.offset = String(params.offset);
   return query;
 }
 

@@ -11,10 +11,12 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.customer import Customer
 from app.models.lead import Lead
 from app.models.score_snapshot import (
     CustomerHealthScore,
     EffortEfficiencyScore,
+    HealthClassification,
     LeadClassification,
     LeadScore,
 )
@@ -112,6 +114,52 @@ class ScoreSnapshotRepository:
         await self._session.flush()
         await self._session.refresh(score)
         return score
+
+    async def list_latest_customer_health(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        classification: HealthClassification | None = None,
+    ) -> tuple[list[tuple[CustomerHealthScore, Customer]], int]:
+        """Latest snapshot per active customer, joined to the customer.
+
+        Returns ``(page_rows, total_count)``.  Sorted lowest health_score first
+        (most at-risk on top) so the UI default view shows the highest-priority
+        customers.  Two queries: a ``COUNT`` for the envelope total, and a page
+        query — both use the ``ix_customer_health_scores_classification`` and
+        ``ix_customer_health_scores_customer_id_computed_at`` indexes.
+        """
+        latest_ids = (
+            select(CustomerHealthScore.id)
+            .distinct(CustomerHealthScore.customer_id)
+            .order_by(
+                CustomerHealthScore.customer_id,
+                CustomerHealthScore.computed_at.desc(),
+            )
+            .subquery()
+        )
+        base = (
+            select(CustomerHealthScore, Customer)
+            .join(Customer, Customer.id == CustomerHealthScore.customer_id)
+            .where(CustomerHealthScore.id.in_(select(latest_ids.c.id)))
+            .where(Customer.is_active.is_(True))
+        )
+        if classification is not None:
+            base = base.where(CustomerHealthScore.classification == classification)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        page_stmt = (
+            base.order_by(
+                CustomerHealthScore.health_score.asc(),
+                CustomerHealthScore.computed_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        total = (await self._session.execute(count_stmt)).scalar_one()
+        rows = (await self._session.execute(page_stmt)).all()
+        return [(row[0], row[1]) for row in rows], int(total)
 
     async def customer_health_history(self, customer_id: uuid.UUID) -> list[CustomerHealthScore]:
         stmt = (

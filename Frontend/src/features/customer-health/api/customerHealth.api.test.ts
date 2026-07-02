@@ -11,18 +11,21 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+const EMPTY_LIST = { items: [], total: 0, limit: 25, offset: 0 };
+
 describe('customerHealth.api', () => {
   it('listCustomerHealth hits the Intelligence endpoint and parses', async () => {
     let url: URL | undefined;
     server.use(
       http.get(`${BASE}/intelligence/customer-health`, ({ request }) => {
         url = new URL(request.url);
-        return HttpResponse.json({ items: [{ customer_id: 'c1' }], total: 1 });
+        return HttpResponse.json({ items: [{ customer_id: 'c1' }], total: 1, limit: 25, offset: 0 });
       }),
     );
 
     const res = await listCustomerHealth();
     expect(url?.searchParams.has('classification')).toBe(false);
+    expect(url?.searchParams.has('limit')).toBe(false);
     expect(res.total).toBe(1);
     expect(res.items[0]?.customer_id).toBe('c1');
   });
@@ -32,12 +35,26 @@ describe('customerHealth.api', () => {
     server.use(
       http.get(`${BASE}/intelligence/customer-health`, ({ request }) => {
         url = new URL(request.url);
-        return HttpResponse.json({ items: [], total: 0 });
+        return HttpResponse.json(EMPTY_LIST);
       }),
     );
 
     await listCustomerHealth({ classification: 'AT_RISK' });
     expect(url?.searchParams.get('classification')).toBe('AT_RISK');
+  });
+
+  it('listCustomerHealth forwards limit and offset', async () => {
+    let url: URL | undefined;
+    server.use(
+      http.get(`${BASE}/intelligence/customer-health`, ({ request }) => {
+        url = new URL(request.url);
+        return HttpResponse.json(EMPTY_LIST);
+      }),
+    );
+
+    await listCustomerHealth({ limit: 10, offset: 20 });
+    expect(url?.searchParams.get('limit')).toBe('10');
+    expect(url?.searchParams.get('offset')).toBe('20');
   });
 
   it('getCustomerHealth fetches by id from the Intelligence endpoint', async () => {

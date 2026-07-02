@@ -292,6 +292,7 @@ class CustomerHealthService:
         last_comm = await self._metrics.last_activity_date(cid, _COMM_GAP_TYPES)
         last_shipped = await self._metrics.last_shipped_date(cid)
 
+        total_outstanding, overdue_outstanding = await self._metrics.outstanding_totals(cid, today)
         return CustomerHealthInputs(
             competitive_risk_level=customer.competitive_risk_level.value,
             visit_meeting_count_90d=await self._metrics.activity_count(
@@ -320,10 +321,29 @@ class CustomerHealthService:
             dispatch_last_30d=await self._metrics.dispatch_in_period(
                 cid, today - timedelta(days=30), today
             ),
-            overdue_outstanding=(await self._metrics.outstanding_totals(cid, today))[1],
-            total_outstanding=(await self._metrics.outstanding_totals(cid, today))[0],
+            overdue_outstanding=overdue_outstanding,
+            total_outstanding=total_outstanding,
             comm_gap_days=(today - last_comm).days if last_comm is not None else None,
             activity_gap_days=(today - last_shipped).days if last_shipped is not None else None,
+        )
+
+    async def list_from_snapshots(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        classification: HealthClassification | None = None,
+    ) -> tuple[list[tuple[CustomerHealthScore, Customer]], int]:
+        """Return the latest persisted snapshot per active customer, paginated.
+
+        Two DB queries regardless of customer count (vs. N x 12 for live).
+        Falls back to an empty list when no snapshots exist — callers should
+        tell users to run ``POST /intelligence/recompute`` first.
+        """
+        return await self._snapshots.list_latest_customer_health(
+            limit=limit,
+            offset=offset,
+            classification=classification,
         )
 
     async def list_live(
