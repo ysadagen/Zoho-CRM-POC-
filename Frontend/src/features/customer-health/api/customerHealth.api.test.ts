@@ -11,7 +11,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-const EMPTY_LIST = { items: [], total: 0, limit: 25, offset: 0 };
+const EMPTY_LIST = { items: [], total: 0, limit: 25, offset: 0, last_computed_at: null };
 
 describe('customerHealth.api', () => {
   it('listCustomerHealth hits the Intelligence endpoint and parses', async () => {
@@ -19,7 +19,7 @@ describe('customerHealth.api', () => {
     server.use(
       http.get(`${BASE}/intelligence/customer-health`, ({ request }) => {
         url = new URL(request.url);
-        return HttpResponse.json({ items: [{ customer_id: 'c1' }], total: 1, limit: 25, offset: 0 });
+        return HttpResponse.json({ items: [{ customer_id: 'c1' }], total: 1, limit: 25, offset: 0, last_computed_at: '2026-07-03T08:00:00Z' });
       }),
     );
 

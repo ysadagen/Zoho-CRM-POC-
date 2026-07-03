@@ -41,13 +41,14 @@ const ROW = {
   defaults_applied: ['engagement'],
 };
 
-function listOk(params?: { total?: number; limit?: number; offset?: number }) {
+function listOk(params?: { total?: number; limit?: number; offset?: number; last_computed_at?: string }) {
   return http.get(`${BASE}/intelligence/customer-health`, () =>
     HttpResponse.json({
       items: [ROW],
       total: params?.total ?? 1,
       limit: params?.limit ?? 25,
       offset: params?.offset ?? 0,
+      last_computed_at: params?.last_computed_at ?? new Date().toISOString(),
     }),
   );
 }
@@ -84,6 +85,26 @@ describe('CustomerHealthPage', () => {
     expect(screen.getByText(/Defaults applied: engagement/)).toBeInTheDocument();
   });
 
+  it('shows the computing panel when the API returns empty with no last_computed_at', async () => {
+    server.use(
+      http.get(`${BASE}/intelligence/customer-health`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0, last_computed_at: null }),
+      ),
+    );
+    renderWithProviders(<CustomerHealthPage />);
+    expect(await screen.findByRole('status', { name: 'Computing health scores' })).toBeInTheDocument();
+    expect(screen.getByText('Building your first health report')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
+  });
+
+  it('shows the stale refresh badge when last_computed_at is older than 8 hours', async () => {
+    const nineHoursAgo = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+    server.use(listOk({ last_computed_at: nineHoursAgo }));
+    renderWithProviders(<CustomerHealthPage />);
+    await screen.findByText('Acme Distributors');
+    expect(screen.getByText('Refreshing')).toBeInTheDocument();
+  });
+
   it('shows a page error with the Request ID on failure', async () => {
     server.use(
       http.get(`${BASE}/intelligence/customer-health`, () =>
@@ -110,7 +131,7 @@ describe('CustomerHealthPage', () => {
     server.use(
       http.get(`${BASE}/intelligence/customer-health`, ({ request }) => {
         capturedOffset = new URL(request.url).searchParams.get('offset') ?? '0';
-        return HttpResponse.json({ items: [ROW], total: 50, limit: 25, offset: Number(capturedOffset) });
+        return HttpResponse.json({ items: [ROW], total: 50, limit: 25, offset: Number(capturedOffset), last_computed_at: new Date().toISOString() });
       }),
     );
     const user = userEvent.setup();
@@ -133,7 +154,7 @@ describe('CustomerHealthPage', () => {
     server.use(
       http.get(`${BASE}/intelligence/customer-health`, ({ request }) => {
         offsets.push(new URL(request.url).searchParams.get('offset') ?? '0');
-        return HttpResponse.json({ items: [ROW], total: 50, limit: 25, offset: 0 });
+        return HttpResponse.json({ items: [ROW], total: 50, limit: 25, offset: 0, last_computed_at: new Date().toISOString() });
       }),
     );
     const user = userEvent.setup();

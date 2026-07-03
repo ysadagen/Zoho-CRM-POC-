@@ -7,6 +7,7 @@ over Phase 2B; 2B.1 covers :class:`LeadScore`.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,6 +161,11 @@ class ScoreSnapshotRepository:
         total = (await self._session.execute(count_stmt)).scalar_one()
         rows = (await self._session.execute(page_stmt)).all()
         return [(row[0], row[1]) for row in rows], int(total)
+
+    async def customer_health_last_computed_at(self) -> datetime | None:
+        """Most recent ``computed_at`` across all customer-health snapshots."""
+        stmt = select(func.max(CustomerHealthScore.computed_at))
+        return (await self._session.execute(stmt)).scalar_one_or_none()
 
     async def customer_health_history(self, customer_id: uuid.UUID) -> list[CustomerHealthScore]:
         stmt = (

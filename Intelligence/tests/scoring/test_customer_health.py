@@ -149,6 +149,7 @@ async def test_customer_health_list_returns_empty_without_snapshots(
     assert body["items"] == []
     assert body["limit"] == 25
     assert body["offset"] == 0
+    assert body["last_computed_at"] is None
 
 
 async def test_customer_health_list_returns_paginated_from_snapshots(
@@ -179,6 +180,7 @@ async def test_customer_health_list_returns_paginated_from_snapshots(
     match = next(i for i in body["items"] if i["company_name"] == "Snapshot Co")
     assert match["health_score"] == 62.5
     assert match["classification"] == "STABLE"
+    assert body["last_computed_at"] is not None
 
 
 async def test_customer_health_list_filters_classification(

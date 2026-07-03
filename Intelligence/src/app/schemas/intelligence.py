@@ -243,6 +243,7 @@ class CustomerHealthList(BaseModel):
     total: int
     limit: int
     offset: int
+    last_computed_at: datetime | None = None
 
 
 class CustomerHealthSnapshotOut(BaseModel):

@@ -20,7 +20,7 @@ import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -360,16 +360,20 @@ class CustomerHealthService:
             results.append((customer, result))
         return results
 
+    async def last_computed_at(self) -> datetime | None:
+        """Most recent snapshot timestamp across all customers."""
+        return await self._snapshots.customer_health_last_computed_at()
+
     async def get_live(
         self, customer_id: uuid.UUID, *, today: date | None = None
-    ) -> tuple[Customer, CustomerHealthResult]:
+    ) -> tuple[Customer, CustomerHealthResult, uuid.UUID]:
         as_of = today or date.today()
         customer = await self._customers.get_by_id(customer_id)
         if customer is None:
             raise NotFoundError("Customer not found", code="CUSTOMER_NOT_FOUND")
-        _, params = await self._configs.load_active_params(ScoringEngine.CUSTOMER_HEALTH)
+        config_id, params = await self._configs.load_active_params(ScoringEngine.CUSTOMER_HEALTH)
         result = await self.compute_for_customer(customer, params, today=as_of)
-        return customer, result
+        return customer, result, config_id
 
     async def snapshot_all(self, *, today: date | None = None) -> int:
         """Compute + persist a snapshot for every active customer (recompute)."""

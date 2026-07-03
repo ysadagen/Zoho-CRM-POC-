@@ -667,6 +667,8 @@ export interface CustomerHealthList {
   total: number;
   limit: number;
   offset: number;
+  /** ISO timestamp of the most recent snapshot write; null when no snapshots exist yet. */
+  last_computed_at: string | null;
 }
 
 export interface CustomerHealthSnapshot {
