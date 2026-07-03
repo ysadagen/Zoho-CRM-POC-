@@ -103,7 +103,11 @@ class InvoiceService:
 
         Returns the invoice with its new paid total.
         """
-        invoice = await self._require_invoice(invoice_id)
+        # Lock the row first: two concurrent POST /payments can both pass the
+        # already_paid check without FOR UPDATE, producing an overpayment.
+        invoice = await self._invoices.get_by_id_for_update(invoice_id)
+        if invoice is None:
+            raise NotFoundError("Invoice not found", code="INVOICE_NOT_FOUND")
         already_paid = await self._invoices.paid_total(invoice_id)
         if already_paid + payload.amount > invoice.amount:
             raise ConflictError(

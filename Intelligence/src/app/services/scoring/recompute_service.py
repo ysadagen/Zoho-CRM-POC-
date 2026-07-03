@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConflictError
 from app.models.scoring_config import ScoringEngine
 from app.services.scoring.beat_planning import BeatPlanningService
 from app.services.scoring.customer_health import CustomerHealthService
@@ -23,11 +25,16 @@ from app.services.scoring.lead_scoring import LeadScoringService
 
 logger = logging.getLogger(__name__)
 
+# Session-level advisory lock key — prevents two concurrent recompute calls from
+# each writing a full snapshot set (duplicate snapshot rows in the same second).
+_RECOMPUTE_ADVISORY_KEY = 1_234_567_890
+
 
 class RecomputeService:
     """Runs the snapshot sweep for one or all scoring engines."""
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._lead = LeadScoringService(session)
         self._health = CustomerHealthService(session)
         self._effort = EffortEfficiencyService(session)
@@ -39,20 +46,40 @@ class RecomputeService:
         Returns ``{engine_value: entities_scored}`` for every engine run.
         Each engine commits its own sweep, so a partial failure leaves earlier
         engines' snapshots persisted (and is surfaced to the caller).
+
+        Raises :class:`ConflictError` (409) if another recompute is already
+        running on this database session server.
         """
-        results: dict[str, int] = {}
+        acquired = (
+            await self._session.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": _RECOMPUTE_ADVISORY_KEY},
+            )
+        ).scalar_one()
+        if not acquired:
+            raise ConflictError(
+                "A recompute is already in progress — try again shortly",
+                code="RECOMPUTE_IN_PROGRESS",
+            )
+        try:
+            results: dict[str, int] = {}
 
-        if engine in (None, ScoringEngine.LEAD_SCORING):
-            results[ScoringEngine.LEAD_SCORING.value] = await self._lead.recompute_all()
-        if engine in (None, ScoringEngine.CUSTOMER_HEALTH):
-            results[ScoringEngine.CUSTOMER_HEALTH.value] = await self._health.snapshot_all()
-        if engine in (None, ScoringEngine.EFFORT_EFFICIENCY):
-            results[ScoringEngine.EFFORT_EFFICIENCY.value] = await self._effort.snapshot_all()
-        if engine in (None, ScoringEngine.BEAT_PLANNING):
-            results[ScoringEngine.BEAT_PLANNING.value] = await self._beat.snapshot_all()
+            if engine in (None, ScoringEngine.LEAD_SCORING):
+                results[ScoringEngine.LEAD_SCORING.value] = await self._lead.recompute_all()
+            if engine in (None, ScoringEngine.CUSTOMER_HEALTH):
+                results[ScoringEngine.CUSTOMER_HEALTH.value] = await self._health.snapshot_all()
+            if engine in (None, ScoringEngine.EFFORT_EFFICIENCY):
+                results[ScoringEngine.EFFORT_EFFICIENCY.value] = await self._effort.snapshot_all()
+            if engine in (None, ScoringEngine.BEAT_PLANNING):
+                results[ScoringEngine.BEAT_PLANNING.value] = await self._beat.snapshot_all()
 
-        logger.info(
-            "intelligence_recomputed",
-            extra={"engine": engine.value if engine else "ALL", "results": results},
-        )
-        return results
+            logger.info(
+                "intelligence_recomputed",
+                extra={"engine": engine.value if engine else "ALL", "results": results},
+            )
+            return results
+        finally:
+            await self._session.execute(
+                text("SELECT pg_advisory_unlock(:key)"),
+                {"key": _RECOMPUTE_ADVISORY_KEY},
+            )

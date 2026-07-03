@@ -201,26 +201,31 @@ class BeatPlanningService:
         revenue_window = int(params["revenue_window_days"])
         since = today - timedelta(days=handled_window)
         customers = await self._metrics.handled_customers(rep_user_id, since)
-
-        inputs: list[BeatCustomerInput] = []
-        for customer in customers:
-            revenue = await self._metrics.revenue_in_period(
-                customer.id, today - timedelta(days=revenue_window), today
+        if not customers:
+            return []
+        # Two queries for the whole customer list instead of 2 × N per-customer queries.
+        customer_ids = [c.id for c in customers]
+        revenue_by_cid = await self._metrics.revenue_in_period_bulk(
+            customer_ids, today - timedelta(days=revenue_window), today
+        )
+        last_visit_by_cid = await self._metrics.last_activity_date_bulk(
+            customer_ids, (ActivityType.VISIT,)
+        )
+        return [
+            BeatCustomerInput(
+                customer_id=customer.id,
+                company_name=customer.company_name,
+                district=customer.district,
+                customer_type=customer.customer_type.value,
+                revenue_90d=revenue_by_cid[customer.id],
+                days_since_last_visit=(
+                    (today - last_visit_by_cid[customer.id]).days
+                    if last_visit_by_cid[customer.id] is not None
+                    else None
+                ),
             )
-            last_visit = await self._metrics.last_activity_date(customer.id, (ActivityType.VISIT,))
-            inputs.append(
-                BeatCustomerInput(
-                    customer_id=customer.id,
-                    company_name=customer.company_name,
-                    district=customer.district,
-                    customer_type=customer.customer_type.value,
-                    revenue_90d=revenue,
-                    days_since_last_visit=(today - last_visit).days
-                    if last_visit is not None
-                    else None,
-                )
-            )
-        return inputs
+            for customer in customers
+        ]
 
     async def compute_for_rep(
         self, rep_user_id: uuid.UUID, *, max_visits: int | None = None, today: date | None = None

@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # Auth (JWT) — must match the Backend so tokens issued there validate here.
     jwt_secret_key: str
-    jwt_algorithm: str = "HS256"
+    jwt_algorithm: Literal["HS256", "RS256"] = "HS256"
 
     # CORS
     cors_allowed_origins: str = ""

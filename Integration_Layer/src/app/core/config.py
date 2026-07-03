@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # Inbound webhook signature verification (Track B / webhooks — not used in A0).
     zoho_webhook_secret: str
 
+    # Application-layer encryption for persisted OAuth tokens (AES via Fernet).
+    # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    zoho_token_encryption_key: str
+
     # Outbound HTTP behaviour (Zoho client)
     http_timeout_seconds: int = 10
     http_max_retries: int = 3

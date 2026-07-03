@@ -149,3 +149,133 @@ class RepMetricsRepository:
             if classification == LeadClassification.HOT:
                 hot += points
         return hot, total
+
+    # ------------------------------------------------------------------
+    # Bulk variants — all reps in one query (O(1) vs O(N) per-rep loops)
+    # ------------------------------------------------------------------
+
+    async def effort_counts_bulk(
+        self, rep_ids: list[uuid.UUID], start: date, end: date
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        """Per-type activity counts for ALL reps in a single query."""
+        if not rep_ids:
+            return {}
+        stmt = (
+            select(
+                SalesActivity.rep_user_id,
+                SalesActivity.type,
+                func.count(),
+                func.coalesce(func.sum(SalesActivity.duration_minutes), 0),
+            )
+            .where(
+                SalesActivity.rep_user_id.in_(rep_ids),
+                SalesActivity.type.in_(_EFFORT_TYPES),
+                SalesActivity.occurred_at >= start,
+                SalesActivity.occurred_at < end,
+            )
+            .group_by(SalesActivity.rep_user_id, SalesActivity.type)
+        )
+        result: dict[uuid.UUID, dict[str, Any]] = {
+            rid: {"visits": 0, "meetings": 0, "follow_ups": 0, "calls": 0, "hours_logged": 0.0}
+            for rid in rep_ids
+        }
+        total_minutes_by_rep: dict[uuid.UUID, int] = {rid: 0 for rid in rep_ids}
+        for rep_id, activity_type, count, minutes in (await self._session.execute(stmt)).all():
+            result[rep_id][_TYPE_TO_COUNT_KEY[activity_type]] = int(count)
+            total_minutes_by_rep[rep_id] += int(minutes)
+        for rep_id in rep_ids:
+            result[rep_id]["hours_logged"] = total_minutes_by_rep[rep_id] / 60
+        return result
+
+    async def lead_outcome_counts_bulk(
+        self, rep_ids: list[uuid.UUID], start: date, end: date
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        """Assigned / progressed / won counts for ALL reps in a single query."""
+        if not rep_ids:
+            return {}
+        close_days = func.extract("epoch", Lead.won_at - Lead.created_at) / 86400
+        stmt = (
+            select(
+                Lead.assigned_to_user_id,
+                func.count(),
+                func.count().filter(Lead.stage != LeadStage.NEW),
+                func.count().filter(Lead.stage == LeadStage.WON),
+                func.coalesce(func.sum(Lead.won_value).filter(Lead.stage == LeadStage.WON), 0),
+                func.avg(close_days).filter(Lead.stage == LeadStage.WON),
+            )
+            .where(
+                Lead.assigned_to_user_id.in_(rep_ids),
+                Lead.created_at >= start,
+                Lead.created_at < end,
+            )
+            .group_by(Lead.assigned_to_user_id)
+        )
+        result: dict[uuid.UUID, dict[str, Any]] = {
+            rid: {
+                "assigned": 0,
+                "progressed": 0,
+                "won": 0,
+                "won_value_sum": Decimal(0),
+                "avg_time_to_close": None,
+            }
+            for rid in rep_ids
+        }
+        for rep_id, assigned, progressed, won, won_value_sum, avg_close in (
+            await self._session.execute(stmt)
+        ).all():
+            result[rep_id] = {
+                "assigned": int(assigned),
+                "progressed": int(progressed),
+                "won": int(won),
+                "won_value_sum": Decimal(won_value_sum),
+                "avg_time_to_close": float(avg_close) if avg_close is not None else None,
+            }
+        return result
+
+    async def lead_effort_points_bulk(
+        self,
+        rep_ids: list[uuid.UUID],
+        start: date,
+        end: date,
+        *,
+        activity_weights: dict[str, int],
+        time_points_per_hour: int,
+    ) -> dict[uuid.UUID, tuple[float, float]]:
+        """Return ``{rep_id: (hot_points, all_points)}`` for ALL reps in one query."""
+        if not rep_ids:
+            return {}
+        latest = (
+            select(LeadScore.lead_id.label("lead_id"), LeadScore.classification.label("cls"))
+            .distinct(LeadScore.lead_id)
+            .order_by(LeadScore.lead_id, LeadScore.computed_at.desc())
+            .subquery()
+        )
+        stmt = (
+            select(
+                SalesActivity.rep_user_id,
+                SalesActivity.type,
+                SalesActivity.duration_minutes,
+                latest.c.cls,
+            )
+            .select_from(SalesActivity)
+            .outerjoin(latest, latest.c.lead_id == SalesActivity.lead_id)
+            .where(
+                SalesActivity.rep_user_id.in_(rep_ids),
+                SalesActivity.lead_id.is_not(None),
+                SalesActivity.type.in_(_EFFORT_TYPES),
+                SalesActivity.occurred_at >= start,
+                SalesActivity.occurred_at < end,
+            )
+        )
+        hot_by_rep: dict[uuid.UUID, float] = {rid: 0.0 for rid in rep_ids}
+        total_by_rep: dict[uuid.UUID, float] = {rid: 0.0 for rid in rep_ids}
+        for rep_id, activity_type, duration, classification in (
+            await self._session.execute(stmt)
+        ).all():
+            points = activity_weights[activity_type.value] + (
+                (duration or 0) / 60 * time_points_per_hour
+            )
+            total_by_rep[rep_id] += points
+            if classification == LeadClassification.HOT:
+                hot_by_rep[rep_id] += points
+        return {rid: (hot_by_rep[rid], total_by_rep[rid]) for rid in rep_ids}

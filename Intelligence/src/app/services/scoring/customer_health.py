@@ -116,7 +116,8 @@ def _engagement(inp: CustomerHealthInputs, params: dict[str, Any]) -> int:
 
 
 def _growth_trend(inp: CustomerHealthInputs, params: dict[str, Any]) -> tuple[int, bool]:
-    if not inp.revenue_prior_90d:
+    # Credit memos can produce negative prior revenue — treat as missing data.
+    if not inp.revenue_prior_90d or inp.revenue_prior_90d <= 0:
         return int(params["growth_default"]), True
     pct = float(inp.revenue_last_90d - inp.revenue_prior_90d) / float(inp.revenue_prior_90d) * 100
     return _band_score(pct, params["growth_bands"], "min_pct"), False
@@ -200,7 +201,7 @@ def aggregate_health(
     crs = round(sum(crs_w[k] * crs_components[k] for k in crs_w), 2)
 
     raw = cps * w_p - crs * w_r
-    health = round(raw + 100 * w_r, 2)
+    health = round(max(0.0, min(100.0, raw + 100 * w_r)), 2)
     return cps, crs, health, _classify(health, params), profile
 
 
