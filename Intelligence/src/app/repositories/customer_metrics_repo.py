@@ -199,3 +199,53 @@ class CustomerMetricsRepository:
         )
         last: datetime | None = (await self._session.execute(stmt)).scalar_one_or_none()
         return last.date() if last is not None else None
+
+    # ------------------------------------------------------------------
+    # Bulk variants — all customers in one query (beat planning)
+    # ------------------------------------------------------------------
+
+    async def revenue_in_period_bulk(
+        self, customer_ids: list[uuid.UUID], start: date, end: date
+    ) -> dict[uuid.UUID, Decimal]:
+        """Revenue for ALL customers in a single query."""
+        if not customer_ids:
+            return {}
+        stmt = (
+            select(
+                SalesOrder.customer_id,
+                func.coalesce(func.sum(SalesOrder.total), 0),
+            )
+            .where(
+                SalesOrder.customer_id.in_(customer_ids),
+                SalesOrder.status == SalesOrderStatus.SHIPPED,
+                SalesOrder.shipped_date >= start,
+                SalesOrder.shipped_date < end,
+            )
+            .group_by(SalesOrder.customer_id)
+        )
+        result = {cid: Decimal(0) for cid in customer_ids}
+        for customer_id, total in (await self._session.execute(stmt)).all():
+            result[customer_id] = Decimal(total)
+        return result
+
+    async def last_activity_date_bulk(
+        self, customer_ids: list[uuid.UUID], types: Sequence[ActivityType]
+    ) -> dict[uuid.UUID, date | None]:
+        """Most recent activity date for ALL customers in a single query."""
+        if not customer_ids:
+            return {}
+        stmt = (
+            select(
+                SalesActivity.customer_id,
+                func.max(SalesActivity.occurred_at),
+            )
+            .where(
+                SalesActivity.customer_id.in_(customer_ids),
+                SalesActivity.type.in_(types),
+            )
+            .group_by(SalesActivity.customer_id)
+        )
+        result: dict[uuid.UUID, date | None] = {cid: None for cid in customer_ids}
+        for customer_id, last in (await self._session.execute(stmt)).all():
+            result[customer_id] = last.date() if last is not None else None
+        return result

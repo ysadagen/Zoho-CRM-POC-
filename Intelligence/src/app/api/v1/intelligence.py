@@ -8,18 +8,21 @@ This module grows over Phase 2B; 2B.0 wires the scoring-config admin surface
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, get_session_factory
 from app.core.exceptions import NotFoundError
 from app.dependencies.auth import get_current_user, require_admin
-from app.models.score_snapshot import HealthClassification, LeadClassification
+from app.models.score_snapshot import CustomerHealthScore, HealthClassification, LeadClassification
 from app.models.scoring_config import ScoringEngine
 from app.models.user import User
 from app.schemas.intelligence import (
@@ -42,12 +45,63 @@ from app.schemas.intelligence import (
 )
 from app.services.scoring.beat_planning import BeatPlanningService
 from app.services.scoring.config_service import ScoringConfigService
-from app.services.scoring.customer_health import CustomerHealthService
+from app.services.scoring.customer_health import CustomerHealthResult, CustomerHealthService
 from app.services.scoring.effort_efficiency import EffortEfficiencyService
 from app.services.scoring.lead_scoring import LeadScoringService
 from app.services.scoring.recompute_service import RecomputeService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
+
+logger = logging.getLogger(__name__)
+
+# Snapshots older than this trigger a background recompute on the next list request.
+_HEALTH_STALE_HOURS = 8
+
+# One lock per process — prevents concurrent background full-recomputes.
+_bg_health_recompute_lock: asyncio.Lock = asyncio.Lock()
+
+
+async def _bg_full_health_recompute() -> None:
+    """Recompute all customer health snapshots asynchronously (stale-while-revalidate)."""
+    if _bg_health_recompute_lock.locked():
+        return
+    async with _bg_health_recompute_lock:
+        async with get_session_factory()() as session:
+            try:
+                await CustomerHealthService(session).snapshot_all()
+            except Exception:
+                await session.rollback()
+                logger.exception("customer_health.bg_recompute.failed")
+
+
+async def _bg_save_health_snapshot(
+    customer_id: uuid.UUID,
+    result: CustomerHealthResult,
+    config_id: uuid.UUID,
+) -> None:
+    """Persist a live-computed health score as a snapshot (write-on-read)."""
+    async with get_session_factory()() as session:
+        try:
+            session.add(
+                CustomerHealthScore(
+                    customer_id=customer_id,
+                    config_id=config_id,
+                    cps=Decimal(str(result.cps)),
+                    crs=Decimal(str(result.crs)),
+                    components={"cps": result.cps_components, "crs": result.crs_components},
+                    weight_profile=result.weight_profile,
+                    health_score=Decimal(str(result.health_score)),
+                    classification=HealthClassification(result.classification),
+                    defaults_applied=result.defaults_applied,
+                )
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception(
+                "customer_health.bg_save_snapshot.failed",
+                extra={"customer_id": str(customer_id)},
+            )
 
 _Session = Annotated[AsyncSession, Depends(get_db)]
 _CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -111,24 +165,37 @@ async def get_lead_score(
 @router.get(
     "/customer-health",
     response_model=CustomerHealthList,
-    summary="Live health for all active customers",
+    summary="Latest health snapshot per active customer, paginated",
 )
 async def list_customer_health(
+    background_tasks: BackgroundTasks,
     session: _Session,
     current_user: _CurrentUser,
     classification: Annotated[HealthClassification | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> CustomerHealthList:
-    """Live-compute health for every active customer, lowest health first
-    (most at-risk on top). Filter by ``classification``."""
-    computed_at = datetime.now(UTC)
-    rows = await CustomerHealthService(session).list_live()
-    items = [
-        CustomerHealthOut.from_result(customer, result, computed_at) for customer, result in rows
-    ]
-    if classification is not None:
-        items = [i for i in items if i.classification == classification]
-    items.sort(key=lambda i: i.health_score)
-    return CustomerHealthList(items=items, total=len(items))
+    """Latest persisted health snapshot per active customer (lowest score first).
+
+    Triggers a background recompute when snapshots are absent or older than
+    8 hours (stale-while-revalidate), so the table self-populates without a
+    scheduler. Filter by ``classification``; paginate with ``limit``/``offset``."""
+    service = CustomerHealthService(session)
+    rows, total = await service.list_from_snapshots(
+        limit=limit,
+        offset=offset,
+        classification=classification,
+    )
+    last_at = await service.last_computed_at()
+    if last_at is None or (datetime.now(UTC) - last_at) > timedelta(hours=_HEALTH_STALE_HOURS):
+        background_tasks.add_task(_bg_full_health_recompute)
+    return CustomerHealthList(
+        items=[CustomerHealthOut.from_snapshot(score, customer) for score, customer in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+        last_computed_at=last_at,
+    )
 
 
 @router.get(
@@ -138,14 +205,17 @@ async def list_customer_health(
 )
 async def get_customer_health(
     customer_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: _Session,
     current_user: _CurrentUser,
 ) -> CustomerHealthDetailOut:
     """Live CPS/CRS breakdown plus the snapshot history (trend). 404 if the
-    customer does not exist."""
+    customer does not exist. Persists this live result as a snapshot in the
+    background (write-on-read), keeping the list view fresh without a scheduler."""
     service = CustomerHealthService(session)
-    customer, result = await service.get_live(customer_id)
+    customer, result, config_id = await service.get_live(customer_id)
     history = await service.snapshot_history(customer_id)
+    background_tasks.add_task(_bg_save_health_snapshot, customer.id, result, config_id)
     return CustomerHealthDetailOut.from_result_and_history(
         customer, result, datetime.now(UTC), history
     )

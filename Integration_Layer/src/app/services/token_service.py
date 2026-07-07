@@ -13,6 +13,7 @@ lapses, so a request never races the boundary and fails with a 401.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -28,6 +29,11 @@ logger = logging.getLogger(__name__)
 # Refresh this many seconds before the stored expiry to avoid boundary races.
 _EXPIRY_SKEW_SECONDS = 60
 
+# Module-level lock: serialises concurrent force_refresh calls so only one
+# actually hits the Zoho OAuth endpoint; the loser re-checks the DB inside
+# the lock and may return the freshly-stored token without a second network call.
+_REFRESH_LOCK: asyncio.Lock = asyncio.Lock()
+
 
 class TokenService:
     """Provide a valid Zoho access token, refreshing and persisting as needed."""
@@ -40,7 +46,7 @@ class TokenService:
         settings: Settings,
     ) -> None:
         self._session = session
-        self._repo = ZohoTokenRepository(session)
+        self._repo = ZohoTokenRepository(session, encryption_key=settings.zoho_token_encryption_key)
         self._oauth = oauth_client
         self._settings = settings
 
@@ -54,29 +60,38 @@ class TokenService:
     async def force_refresh(self) -> str:
         """Refresh the access token unconditionally and persist the new state.
 
+        Serialised by ``_REFRESH_LOCK``: if another coroutine already refreshed
+        while this one was waiting, the token re-read inside the lock may be
+        fresh enough and the network call is skipped.
+
         Uses the persisted refresh token when present, else the bootstrap
         setting. Raises :class:`ZohoAuthError` (via the OAuth client) if Zoho
         rejects the refresh token or client credentials.
         """
-        existing = await self._repo.get()
-        refresh_token = existing.refresh_token if existing else self._settings.zoho_refresh_token
-        if not refresh_token:
-            raise ZohoAuthError("No Zoho refresh token available (bootstrap or stored)")
+        async with _REFRESH_LOCK:
+            # Re-read inside the lock — a concurrent caller may have already refreshed.
+            existing = await self._repo.get()
+            if existing is not None and not self._is_expiring(existing.expires_at):
+                return existing.access_token
 
-        response = await self._oauth.refresh(refresh_token)
-        expires_at = datetime.now(UTC) + timedelta(seconds=response.expires_in)
+            refresh_token = existing.refresh_token if existing else self._settings.zoho_refresh_token
+            if not refresh_token:
+                raise ZohoAuthError("No Zoho refresh token available (bootstrap or stored)")
 
-        await self._repo.upsert(
-            access_token=response.access_token,
-            # Carry the refresh token forward — the grant does not reissue one.
-            refresh_token=refresh_token,
-            expires_at=expires_at,
-            token_type=response.token_type,
-            scope=response.scope,
-            api_domain=response.api_domain,
-        )
-        await self._session.commit()
-        return response.access_token
+            response = await self._oauth.refresh(refresh_token)
+            expires_at = datetime.now(UTC) + timedelta(seconds=response.expires_in)
+
+            await self._repo.upsert(
+                access_token=response.access_token,
+                # Carry the refresh token forward — the grant does not reissue one.
+                refresh_token=refresh_token,
+                expires_at=expires_at,
+                token_type=response.token_type,
+                scope=response.scope,
+                api_domain=response.api_domain,
+            )
+            await self._session.commit()
+            return response.access_token
 
     @staticmethod
     def _is_expiring(expires_at: datetime) -> bool:

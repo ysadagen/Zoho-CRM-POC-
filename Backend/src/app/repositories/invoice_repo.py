@@ -26,6 +26,11 @@ class InvoiceRepository:
         stmt = select(Invoice).where(Invoice.id == invoice_id)
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
+    async def get_by_id_for_update(self, invoice_id: uuid.UUID) -> Invoice | None:
+        """SELECT … FOR UPDATE — locks the invoice row for the transaction duration."""
+        stmt = select(Invoice).where(Invoice.id == invoice_id).with_for_update()
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
     async def list_(
         self,
         *,

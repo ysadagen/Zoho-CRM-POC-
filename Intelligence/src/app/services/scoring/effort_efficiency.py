@@ -254,17 +254,24 @@ class EffortEfficiencyService:
         self, params: dict[str, Any], start: date, end: date
     ) -> list[RepEffortInputs]:
         reps = await self._users.list_active()
+        if not reps:
+            return []
+        rep_ids = [rep.id for rep in reps]
+        # Three queries for the whole cohort instead of 3 × N per-rep queries.
+        effort_by_rep = await self._metrics.effort_counts_bulk(rep_ids, start, end)
+        leads_by_rep = await self._metrics.lead_outcome_counts_bulk(rep_ids, start, end)
+        points_by_rep = await self._metrics.lead_effort_points_bulk(
+            rep_ids,
+            start,
+            end,
+            activity_weights=params["activity_weights"],
+            time_points_per_hour=params["time_points_per_hour"],
+        )
         cohort: list[RepEffortInputs] = []
         for rep in reps:
-            counts = await self._metrics.effort_counts(rep.id, start, end)
-            leads = await self._metrics.lead_outcome_counts(rep.id, start, end)
-            hot_points, all_points = await self._metrics.lead_effort_points(
-                rep.id,
-                start,
-                end,
-                activity_weights=params["activity_weights"],
-                time_points_per_hour=params["time_points_per_hour"],
-            )
+            counts = effort_by_rep[rep.id]
+            leads = leads_by_rep[rep.id]
+            hot_points, all_points = points_by_rep[rep.id]
             cohort.append(
                 RepEffortInputs(
                     rep_user_id=rep.id,

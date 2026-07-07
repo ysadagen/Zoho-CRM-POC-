@@ -4,7 +4,16 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import type { CustomerHealth } from '@/types/api.types';
 
 const COL_COUNT = 5;
-const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'];
+
+const SKELETON_ROWS: { key: string; nameW: string }[] = [
+  { key: 'a', nameW: '52%' },
+  { key: 'b', nameW: '61%' },
+  { key: 'c', nameW: '45%' },
+  { key: 'd', nameW: '58%' },
+  { key: 'e', nameW: '50%' },
+  { key: 'f', nameW: '64%' },
+  { key: 'g', nameW: '48%' },
+];
 
 export interface CustomerHealthTableProps {
   rows: CustomerHealth[];
@@ -31,11 +40,13 @@ export function CustomerHealthTable({
         </thead>
         <tbody>
           {loading ? (
-            SKELETON_ROWS.map((key) => (
+            SKELETON_ROWS.map(({ key, nameW }) => (
               <tr key={key}>
-                <td colSpan={COL_COUNT}>
-                  <Skeleton height={18} />
-                </td>
+                <td><Skeleton width={nameW} height={14} /></td>
+                <td><Skeleton width={60} height={22} className="sk-pill" /></td>
+                <td className="right"><Skeleton width={36} height={14} /></td>
+                <td className="right"><Skeleton width={32} height={14} /></td>
+                <td className="right"><Skeleton width={32} height={14} /></td>
               </tr>
             ))
           ) : rows.length === 0 ? (

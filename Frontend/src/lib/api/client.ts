@@ -28,11 +28,19 @@ const AUTH_HEADER = 'Authorization';
 let tokenGetter: () => string | null = () => null;
 
 /**
+ * Guards against multiple concurrent 401 responses each independently
+ * triggering a navigate() call; only the first one fires the handler.
+ * Reset when a new session is configured (i.e. after login).
+ */
+let isRedirecting = false;
+
+/**
  * Called once at app boot, before any API requests. Lets the auth context
  * decide where tokens live without `lib/api/` knowing about React.
  */
 export function configureAuthTokenSource(getter: () => string | null): void {
   tokenGetter = getter;
+  isRedirecting = false;
 }
 
 /**
@@ -120,7 +128,10 @@ httpClient.interceptors.response.use(
     });
 
     if (apiError.isAuthFailure() && !isAuthFlowRequest(error.config)) {
-      authFailureHandler(apiError);
+      if (!isRedirecting) {
+        isRedirecting = true;
+        authFailureHandler(apiError);
+      }
     }
 
     return Promise.reject(apiError);

@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # Auth (JWT)
     jwt_secret_key: str
-    jwt_algorithm: str = "HS256"
+    jwt_algorithm: Literal["HS256", "RS256"] = "HS256"
     # There is no /refresh endpoint by design — re-login is the only
     # renewal path. Tune via .env if a longer (or shorter) session
     # better fits the operating model.

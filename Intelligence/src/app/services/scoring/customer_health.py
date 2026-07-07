@@ -20,7 +20,7 @@ import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -116,7 +116,8 @@ def _engagement(inp: CustomerHealthInputs, params: dict[str, Any]) -> int:
 
 
 def _growth_trend(inp: CustomerHealthInputs, params: dict[str, Any]) -> tuple[int, bool]:
-    if not inp.revenue_prior_90d:
+    # Credit memos can produce negative prior revenue — treat as missing data.
+    if not inp.revenue_prior_90d or inp.revenue_prior_90d <= 0:
         return int(params["growth_default"]), True
     pct = float(inp.revenue_last_90d - inp.revenue_prior_90d) / float(inp.revenue_prior_90d) * 100
     return _band_score(pct, params["growth_bands"], "min_pct"), False
@@ -200,7 +201,7 @@ def aggregate_health(
     crs = round(sum(crs_w[k] * crs_components[k] for k in crs_w), 2)
 
     raw = cps * w_p - crs * w_r
-    health = round(raw + 100 * w_r, 2)
+    health = round(max(0.0, min(100.0, raw + 100 * w_r)), 2)
     return cps, crs, health, _classify(health, params), profile
 
 
@@ -292,6 +293,7 @@ class CustomerHealthService:
         last_comm = await self._metrics.last_activity_date(cid, _COMM_GAP_TYPES)
         last_shipped = await self._metrics.last_shipped_date(cid)
 
+        total_outstanding, overdue_outstanding = await self._metrics.outstanding_totals(cid, today)
         return CustomerHealthInputs(
             competitive_risk_level=customer.competitive_risk_level.value,
             visit_meeting_count_90d=await self._metrics.activity_count(
@@ -320,10 +322,29 @@ class CustomerHealthService:
             dispatch_last_30d=await self._metrics.dispatch_in_period(
                 cid, today - timedelta(days=30), today
             ),
-            overdue_outstanding=(await self._metrics.outstanding_totals(cid, today))[1],
-            total_outstanding=(await self._metrics.outstanding_totals(cid, today))[0],
+            overdue_outstanding=overdue_outstanding,
+            total_outstanding=total_outstanding,
             comm_gap_days=(today - last_comm).days if last_comm is not None else None,
             activity_gap_days=(today - last_shipped).days if last_shipped is not None else None,
+        )
+
+    async def list_from_snapshots(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        classification: HealthClassification | None = None,
+    ) -> tuple[list[tuple[CustomerHealthScore, Customer]], int]:
+        """Return the latest persisted snapshot per active customer, paginated.
+
+        Two DB queries regardless of customer count (vs. N x 12 for live).
+        Falls back to an empty list when no snapshots exist — callers should
+        tell users to run ``POST /intelligence/recompute`` first.
+        """
+        return await self._snapshots.list_latest_customer_health(
+            limit=limit,
+            offset=offset,
+            classification=classification,
         )
 
     async def list_live(
@@ -339,16 +360,20 @@ class CustomerHealthService:
             results.append((customer, result))
         return results
 
+    async def last_computed_at(self) -> datetime | None:
+        """Most recent snapshot timestamp across all customers."""
+        return await self._snapshots.customer_health_last_computed_at()
+
     async def get_live(
         self, customer_id: uuid.UUID, *, today: date | None = None
-    ) -> tuple[Customer, CustomerHealthResult]:
+    ) -> tuple[Customer, CustomerHealthResult, uuid.UUID]:
         as_of = today or date.today()
         customer = await self._customers.get_by_id(customer_id)
         if customer is None:
             raise NotFoundError("Customer not found", code="CUSTOMER_NOT_FOUND")
-        _, params = await self._configs.load_active_params(ScoringEngine.CUSTOMER_HEALTH)
+        config_id, params = await self._configs.load_active_params(ScoringEngine.CUSTOMER_HEALTH)
         result = await self.compute_for_customer(customer, params, today=as_of)
-        return customer, result
+        return customer, result, config_id
 
     async def snapshot_all(self, *, today: date | None = None) -> int:
         """Compute + persist a snapshot for every active customer (recompute)."""

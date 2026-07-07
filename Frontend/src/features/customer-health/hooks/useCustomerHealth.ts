@@ -13,13 +13,19 @@ import {
 } from '../api/customerHealth.api';
 import { customerHealthKeys } from '../customerHealth.keys';
 
+export interface UseCustomerHealthListOptions {
+  refetchInterval?: number | false;
+}
+
 export function useCustomerHealthList(
   params: ListCustomerHealthParams,
+  options: UseCustomerHealthListOptions = {},
 ): UseQueryResult<CustomerHealthList> {
   return useQuery({
     queryKey: customerHealthKeys.list(params),
     queryFn: () => listCustomerHealth(params),
     placeholderData: keepPreviousData,
+    refetchInterval: options.refetchInterval ?? false,
   });
 }
 

@@ -30,6 +30,22 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     });
   }, [navigate]);
 
+  // Proactive expiry: redirect 60s before the token expires so the user is
+  // warned before a mid-operation 401 (no refresh endpoint exists).
+  useEffect(() => {
+    if (!user) return;
+    const session = getSession();
+    if (!session) return;
+    const msUntilWarn = session.expiresAt - Date.now() - 60_000;
+    if (msUntilWarn <= 0) return;
+    const timer = setTimeout(() => {
+      clearSession();
+      setUser(null);
+      navigate(`${routes.login}?reason=expiring`, { replace: true });
+    }, msUntilWarn);
+    return () => clearTimeout(timer);
+  }, [user, navigate]);
+
   const login = useCallback(async (credentials: LoginRequest) => {
     const res = await authApi.login(credentials);
     setSession({
